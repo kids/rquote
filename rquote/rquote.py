@@ -10,7 +10,7 @@ import sys
 import base64
 import logging
 import pandas as pd
-from utils import WebUtils, reqget
+from rquote.utils import WebUtils, reqget
 # logging.getLogger().setLevel(logging.INFO)
 logging.basicConfig(filename='/tmp/rproxy.log',
                     format='%(asctime)-15s:%(lineno)s %(message)s',
