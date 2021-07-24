@@ -254,10 +254,10 @@ def get_all_industries(orderby='mkt'):
         str(int(time.time()*1e3))).text
     industries = json.loads(
         a.split('jQuery1124037117565571971345_1627047188599(')[1][:-2])['data']['diff']
-    ind_ids = [i['f14'] for i in industries]
+    ind_ids = [i['f12'] for i in industries]
     if orderby == 'mkt':
-        ind_ids = [i['f14'] for i in sorted(industries,key=lambda k:k['f20'], reverse=True)]
+        ind_ids = [i['f12'] for i in sorted(industries,key=lambda k:k['f20'], reverse=True)]
     elif orderby == 'rise':
-        ind_ids = [i['f14'] for i in sorted(industries,key=lambda k:k['f3'], reverse=True)]
+        ind_ids = [i['f12'] for i in sorted(industries,key=lambda k:k['f3'], reverse=True)]
     logging.debug('get industries {}'.format(len(industries)))
     return ind_ids
