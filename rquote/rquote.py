@@ -261,3 +261,22 @@ def get_all_industries(orderby='mkt'):
         ind_ids = [i['f12'] for i in sorted(industries,key=lambda k:k['f3'], reverse=True)]
     logging.debug('get industries {}'.format(len(industries)))
     return ind_ids
+
+
+def get_all_concepts(orderby='mkt'):
+    a = reqget(
+        base64.b64decode('aHR0cHM6Ly8yMi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9j'+
+            'bGlzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3MzI5ODQxOTMwNzY4OTc5XzE2MjcxMDk0N'+
+            'jA2MzMmcG49MSZwej00MDAmcG89MSZucD0xJnV0PWJkMWQ5ZGRiMDQwODk3MDBjZj'+
+            'ljMjdmNmY3NDI2MjgxJmZsdHQ9MiZpbnZ0PTImZmlkPWYzJmZzPW06OTArdDozK2Y'+
+            '6ITUwJmZpZWxkcz1mMyxmMTIsZjE0LGYyMCxmMTA0LGYxMDUmXz0=').decode('utf-8') +
+        str(int(time.time()*1e3))).text
+    concepts = json.loads(
+        a.split('jQuery112407329841930768979_1627109460633(')[1][:-2])['data']['diff']
+    con_ids = [i['f12'] for i in concepts]
+    if orderby == 'mkt':
+        con_ids = [i['f12'] for i in sorted(concepts,key=lambda k:k['f20'], reverse=True)]
+    elif orderby == 'rise':
+        con_ids = [i['f12'] for i in sorted(concepts,key=lambda k:k['f3'], reverse=True)]
+    logging.debug('get concepts {}'.format(len(concepts)))
+    return con_ids
