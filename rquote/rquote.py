@@ -242,3 +242,22 @@ def get_conc_stks(bkid, dc=None):
         a.split('jQuery1123040570538569470105_1618047990690(')[1][:-2])['data']['diff']
     logging.debug('get fresh conc {}'.format(bkid))
     return [i['f14'] for i in a]
+
+
+def get_all_industries(orderby='mkt'):
+    a = reqget(
+        base64.b64decode('aHR0cHM6Ly84Ny5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9j'+
+            'bGlzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDAzNzExNzU2NTU3MTk3MTM0NV8xNjI3MDQ3M'+
+            'Tg4NTk5JnBuPTEmcHo9MTAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2'+
+            'Y5YzI3ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mMyZmcz1tOjkwK3Q6Mit'+
+            'mOiE1MCZmaWVsZHM9ZjMsZjEyLGYxNCxmMjAsZjEwNCxmMTA1Jl89').decode('utf-8') +
+        str(int(time.time()*1e3))).text
+    industries = json.loads(
+        a.split('jQuery1124037117565571971345_1627047188599(')[1][:-2])['data']['diff']
+    ind_ids = [i['f14'] for i in industries]
+    if orderby == 'mkt':
+        ind_ids = [i['f14'] for i in sorted(industries,key=lambda k:k['f20'], reverse=True)]
+    elif orderby == 'rise':
+        ind_ids = [i['f14'] for i in sorted(industries,key=lambda k:k['f3'], reverse=True)]
+    logging.debug('get industries {}'.format(len(industries)))
+    return ind_ids
