@@ -10,7 +10,7 @@ import sys
 import base64
 import logging
 import pandas as pd
-from rquote.utils import WebUtils, reqget
+from utils import WebUtils, reqget
 # logging.getLogger().setLevel(logging.INFO)
 logging.basicConfig(filename='/tmp/rproxy.log',
                     format='%(asctime)-15s:%(lineno)s %(message)s',
@@ -23,22 +23,34 @@ def make_tgts(mkts=['ch', 'hk', 'us', 'fund', 'future'], money_min=2e8) -> []:
 
 def get_cn_stocks_by_amount(money_min=2e8):
     '''
-    Return sorted stock id list ordered by latest amount of money, cut at `money_min`
+    Return sorted stock list ordered by latest amount of money, cut at `money_min`
+    item in returned list are [code, name, change, amount, mktcap]
     '''
     a = reqget(
-        base64.b64decode('aHR0cDovL3N0b2NrLmd0aW1nLmNuL2RhdGEvZ2V0X2hzX3hs' +
-                         'cy5waHA/aWQ9cmFua2EmdHlwZT0xJm1ldHJpYz10dXJub3Zlcg==').decode('utf-8'),
+        base64.b64decode('aHR0cDovLzM4LnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2Ns'+
+            'aXN0L2dldD9jYj1qUXVlcnkxMTI0MDk0NTg3NjE4NDQzNzQ4MDFfMTYyNzI4ODQ4O'+
+            'Tk2MSZwbj0xJnB6PTEwMDAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2'+
+            'Y5YzI3ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1tOjArdDo2LG0'+
+            '6MCt0OjgwLG06MSt0OjIsbToxK3Q6MjMmZmllbGRzPWYxMixmMTQsZjMsZjYsZjIxJl89'
+            ).decode('utf-8')+str(int(time.time()*1e3))
     )
-    cdir = os.path.dirname(__file__)
-    with open(os.path.join(cdir, 'ranka'), 'wb') as f:
-        f.write(a.content)
-    a = pd.read_excel(os.path.join(cdir, 'ranka'), header=1)
-    os.remove(os.path.join(cdir, 'ranka'))
-    a.columns = ['code', 'name', 'close', 'p_change', 'change', '_', '_', '_',
-                 'money', 'open', 'yest_close', 'high', 'low']
-    a = a[a.money > money_min]
+    if a:
+        a = json.loads(a.text.split(
+            'jQuery112409458761844374801_1627288489961(')[1][:-2])
+
+    # cdir = os.path.dirname(__file__)
+    # with open(os.path.join(cdir, 'ranka'), 'wb') as f:
+    #     f.write(a.content)
+    # a = pd.read_excel(os.path.join(cdir, 'ranka'), header=1)
+    # os.remove(os.path.join(cdir, 'ranka'))
+    # a.columns = ['code', 'name', 'close', 'p_change', 'change', '_', '_', '_',
+    #              'money', 'open', 'yest_close', 'high', 'low']
+    # a = a[a.money > money_min]
+    a = [ ['sh'+i['f12'] if i['f12'][0]=='6' else 'sz'+i['f12'],
+         i['f14'], i['f3'], i['f6'], i['f21']] for i in a['data']['diff']
+        if i['f6']!='-' and float(i['f6']) > money_min]
     #cands=[(i.code,i.name) for i in a[['code','name']].itertuples()]
-    return a.code.tolist()
+    return a
 
 
 def get_hk_stocks_hotest80():
@@ -47,9 +59,9 @@ def get_hk_stocks_hotest80():
         '/Market_Center.getHKStockData?page=1&num=80&sort=amount&asc=0&node=' +
         'qbgg_hk&_s_r_a=sort').text
     if a:
-        hklist = pd.DataFrame(json.loads(a))
-        hkcands = ['hk' + i.symbol for i in hklist.itertuples()]
-    return hkcands
+        a = [['hk'+i['symbol'], i['name'], i['changepercent'], i['amount'],
+            i['market_value']] for i in json.loads(a)]
+    return a
 
 
 def get_us_stocks_hotest30():
@@ -119,7 +131,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
 
     if i[:2] == 'BK':
         try:
-            a = json.loads(reqget(base64.b64decode('aHR0cDovL3B1c2gyaGlzLmVhc3' +
+            a = reqget(base64.b64decode('aHR0cDovL3B1c2gyaGlzLmVhc3' +
                                                    'Rtb25leS5jb20vYXBpL3F0L3N0' +
                                                    'b2NrL2tsaW5lL2dldD9jYj1qUX' +
                                                    'VlcnkxMTI0MDIyNTY2NDQ1ODcz' +
@@ -128,7 +140,11 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
                                   '&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5' +
                                   '&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58' +
                                   '&klt=101&fqt=0&beg=19900101&end=20220101&_=1',
-                                  headers=WebUtils.headers()).text.split(
+                                  headers=WebUtils.headers())
+            if not a:
+                logging.warning('{} reqget failed: {}'.format(i, a))
+                return i, 'None', pd.DataFrame([])
+            a = json.loads(.text.split(
                 'jQuery1124022566445873766972_1617864568131(')[1][:-2])
             if not a['data']:
                 logging.warning('{} data empty: {}'.format(i, a))
@@ -195,14 +211,9 @@ def get_price_longer(i, l=2, dd={}):
     return i, name, a
 
 
-def get_bklist() -> []:
-    bks = ['BK0' + str(i) for i in range(420, 999)]
-    return bks
-
-
 def get_stock_concepts(i) -> []:
     '''
-    Return concepts of a stock, from eastmoney
+    Return concept list of a stock, from eastmoney
     '''
     f10url = base64.b64decode('aHR0cDovL2YxMC5lYXN0bW9uZXkuY29tLy9Db3JlQ29uY2V' +
                               'wdGlvbi9Db3JlQ29uY2VwdGlvbkFqYXg/Y29kZT0=').decode('utf-8')
@@ -221,7 +232,7 @@ def get_stock_concepts(i) -> []:
     return concepts
 
 
-def get_conc_stks(bkid, dc=None):
+def get_concept_stks(bkid, dc=None):
     '''
     Return stocks of input bkid, e.g. BK0420, BK0900
     dc : dictionary of concepts, local cache with get/put
@@ -241,42 +252,6 @@ def get_conc_stks(bkid, dc=None):
     a = json.loads(
         a.split('jQuery1123040570538569470105_1618047990690(')[1][:-2])['data']['diff']
     logging.debug('get fresh conc {}'.format(bkid))
-    return [i['f14'] for i in a]
-
-
-def get_all_industries(orderby='mkt'):
-    a = reqget(
-        base64.b64decode('aHR0cHM6Ly84Ny5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9j'+
-            'bGlzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDAzNzExNzU2NTU3MTk3MTM0NV8xNjI3MDQ3M'+
-            'Tg4NTk5JnBuPTEmcHo9MTAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2'+
-            'Y5YzI3ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mMyZmcz1tOjkwK3Q6Mit'+
-            'mOiE1MCZmaWVsZHM9ZjMsZjEyLGYxNCxmMjAsZjEwNCxmMTA1Jl89').decode('utf-8') +
-        str(int(time.time()*1e3))).text
-    industries = json.loads(
-        a.split('jQuery1124037117565571971345_1627047188599(')[1][:-2])['data']['diff']
-    ind_ids = [i['f12'] for i in industries]
-    if orderby == 'mkt':
-        ind_ids = [i['f12'] for i in sorted(industries,key=lambda k:k['f20'], reverse=True)]
-    elif orderby == 'rise':
-        ind_ids = [i['f12'] for i in sorted(industries,key=lambda k:k['f3'], reverse=True)]
-    logging.debug('get industries {}'.format(len(industries)))
-    return ind_ids
-
-
-def get_all_concepts(orderby='mkt'):
-    a = reqget(
-        base64.b64decode('aHR0cHM6Ly8yMi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9j'+
-            'bGlzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3MzI5ODQxOTMwNzY4OTc5XzE2MjcxMDk0N'+
-            'jA2MzMmcG49MSZwej00MDAmcG89MSZucD0xJnV0PWJkMWQ5ZGRiMDQwODk3MDBjZj'+
-            'ljMjdmNmY3NDI2MjgxJmZsdHQ9MiZpbnZ0PTImZmlkPWYzJmZzPW06OTArdDozK2Y'+
-            '6ITUwJmZpZWxkcz1mMyxmMTIsZjE0LGYyMCxmMTA0LGYxMDUmXz0=').decode('utf-8') +
-        str(int(time.time()*1e3))).text
-    concepts = json.loads(
-        a.split('jQuery112407329841930768979_1627109460633(')[1][:-2])['data']['diff']
-    con_ids = [i['f12'] for i in concepts]
-    if orderby == 'mkt':
-        con_ids = [i['f12'] for i in sorted(concepts,key=lambda k:k['f20'], reverse=True)]
-    elif orderby == 'rise':
-        con_ids = [i['f12'] for i in sorted(concepts,key=lambda k:k['f3'], reverse=True)]
-    logging.debug('get concepts {}'.format(len(concepts)))
-    return con_ids
+    a = [ ['sh'+i['f12'] if i['f12'][0]=='6' else 'sz'+i['f12'],
+         i['f14'], i['f3'], i['f6'], i['f21']] for i in a]
+    return a
