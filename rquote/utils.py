@@ -10,7 +10,7 @@ import json
 
 logger = logging.getLogger(__name__)
 hdl = logging.FileHandler('/tmp/rproxy.log')
-hdl.setFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+hdl.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logger.addHandler(hdl)
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.DEBUG)
