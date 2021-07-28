@@ -10,7 +10,7 @@ import sys
 import base64
 import logging
 import pandas as pd
-from utils import WebUtils, reqget
+from .utils import WebUtils, reqget
 # logging.getLogger().setLevel(logging.INFO)
 logging.basicConfig(filename='/tmp/rproxy.log',
                     format='%(asctime)-15s:%(lineno)s %(message)s',
@@ -32,7 +32,7 @@ def get_cn_stocks_by_amount(money_min=2e8):
             'Tk2MSZwbj0xJnB6PTEwMDAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2'+
             'Y5YzI3ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1tOjArdDo2LG0'+
             '6MCt0OjgwLG06MSt0OjIsbToxK3Q6MjMmZmllbGRzPWYxMixmMTQsZjMsZjYsZjIxJl89'
-            ).decode('utf-8')+str(int(time.time()*1e3))
+            ).decode()+str(int(time.time()*1e3))
     )
     if a:
         a = json.loads(a.text.split(
@@ -82,7 +82,7 @@ def get_cn_fund_hotest200():
                                 'Y2tMaXN0WydrMldhekswNk5Rd2xoeVh2J10vTWFya2V0X0NlbnRlci5nZXRIUU5vZ' +
                                 'GVEYXRhU2ltcGxlP3BhZ2U9MSZudW09MTIwJnNvcnQ9YW1vdW50JmFzYz0wJm5vZG' +
                                 'U9ZXRmX2hxX2Z1bmQmJTVCb2JqZWN0JTIwSFRNTERpdkVsZW1lbnQlNUQ9eG00aTA='
-                                ).decode('utf-8')).text
+                                ).decode()).text
     if a:
         fundcands = [i['symbol']
                      for i in json.loads(a.split('k2WazK06NQwlhyXv')[1][3:-2])]
@@ -126,7 +126,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
     sina_future_d = base64.b64decode('aHR0cHM6Ly9zdG9jazIuZmluYW5jZS5zaW5hLmNv' +
                                      'bS5jbi9mdXR1cmVzL2FwaS9qc29ucC5waHAvdmFy' +
                                      'JTIwX3t9e309L0lubmVyRnV0dXJlc05ld1NlcnZp' +
-                                     'Y2UuZ2V0RGFpbHlLTGluZT9zeW1ib2w9e30mXz17fQ==').decode('utf-8')
+                                     'Y2UuZ2V0RGFpbHlLTGluZT9zeW1ib2w9e30mXz17fQ==').decode()
     # sina_future_d.format('FB0','2020_11_14','FB0','2020_11_14')
 
     if i[:2] == 'BK':
@@ -136,7 +136,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
                                                    'b2NrL2tsaW5lL2dldD9jYj1qUX' +
                                                    'VlcnkxMTI0MDIyNTY2NDQ1ODcz' +
                                                    'NzY2OTcyXzE2MTc4NjQ1NjgxMz' +
-                                                   'Emc2VjaWQ9OTAu').decode('utf-8') + i +
+                                                   'Emc2VjaWQ9OTAu').decode() + i +
                                   '&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5' +
                                   '&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58' +
                                   '&klt=101&fqt=0&beg=19900101&end=20220101&_=1',
@@ -144,7 +144,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
             if not a:
                 logging.warning('{} reqget failed: {}'.format(i, a))
                 return i, 'None', pd.DataFrame([])
-            a = json.loads(.text.split(
+            a = json.loads(a.text.split(
                 'jQuery1124022566445873766972_1617864568131(')[1][:-2])
             if not a['data']:
                 logging.warning('{} data empty: {}'.format(i, a))
@@ -216,7 +216,7 @@ def get_stock_concepts(i) -> []:
     Return concept list of a stock, from eastmoney
     '''
     f10url = base64.b64decode('aHR0cDovL2YxMC5lYXN0bW9uZXkuY29tLy9Db3JlQ29uY2V' +
-                              'wdGlvbi9Db3JlQ29uY2VwdGlvbkFqYXg/Y29kZT0=').decode('utf-8')
+                              'wdGlvbi9Db3JlQ29uY2VwdGlvbkFqYXg/Y29kZT0=').decode()
     #drop_cons = ['融资融券', '创业板综', '深股通', '沪股通', '深成500', '长江三角']
     #drop_tails = ['板块', '概念', '0_', '成份', '重仓']
     url = f10url + i
@@ -246,7 +246,7 @@ def get_concept_stks(bkid, dc=None):
         base64.b64decode('aHR0cDovL3B1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2NsaXN0' +
                          'L2dldD9jYj1qUXVlcnkxMTIzMDQwNTcwNTM4NTY5NDcwMTA1XzE2MTgwNDc5OTA2O' +
                          'TAmZmlkPWY2MiZwbz0xJnB6PTUwMCZwbj0xJm5wPTEmZmx0dD0yJmludnQ9MiZmcz' +
-                         '1iJTNB').decode('utf-8') +
+                         '1iJTNB').decode() +
         bkid +
         '&fields=f12%2Cf14').text
     a = json.loads(
@@ -254,4 +254,53 @@ def get_concept_stks(bkid, dc=None):
     logging.debug('get fresh conc {}'.format(bkid))
     a = [ ['sh'+i['f12'] if i['f12'][0]=='6' else 'sz'+i['f12'],
          i['f14'], i['f3'], i['f6'], i['f21']] for i in a]
+    return a
+
+
+def east_list_fmt(burl, api_name):
+    '''
+    Return list of list:
+        [sid, name, rise, amount, mkt]
+    '''
+    a = reqget(base64.b64decode(burl).decode() +
+        str(int(time.time()*1e3)))
+    if a:
+        a = a.text
+    else:
+        return
+    a = json.loads(a.split(api_name+'(')[1][:-2])['data']['diff']
+    a = [ [i['f12'],i['f14'], i['f3'], i['f6'], i['f20']] for i in a]
+    return a
+
+
+def get_all_industries():
+    a = east_list_fmt('aHR0cHM6Ly84Ny5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
+        'zdC9nZXQ/Y2I9alF1ZXJ5MTEyNDAzNzExNzU2NTU3MTk3MTM0NV8xNjI3MDQ3MTg4NTk5'+
+        'JnBuPTEmcHo9MTAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZmN'+
+        'zQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mMyZmcz1tOjkwK3Q6MitmOiE1MCZmaWVsZH'+
+        'M9ZjMsZjYsZjEyLGYxNCxmMjAsZjEwNCxmMTA1Jl89',
+        'jQuery1124037117565571971345_1627047188599')
+    logging.debug('get industries {}'.format(len(a)))
+    return a
+
+
+def get_all_concepts():
+    a = east_list_fmt('aHR0cHM6Ly8yMi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
+        'zdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3MzI5ODQxOTMwNzY4OTc5XzE2MjcxMDk0NjA2MzMm'+
+        'cG49MSZwej00MDAmcG89MSZucD0xJnV0PWJkMWQ5ZGRiMDQwODk3MDBjZjljMjdmNmY3N'+
+        'DI2MjgxJmZsdHQ9MiZpbnZ0PTImZmlkPWYzJmZzPW06OTArdDozK2Y6ITUwJmZpZWxkcz'+
+        '1mMyxmNixmMTIsZjE0LGYyMCxmMTA0LGYxMDUmXz0='
+        ,'jQuery112407329841930768979_1627109460633')
+    logging.debug('get concepts {}'.format(len(a)))
+    return a
+
+
+def get_bk_stocks(bkid):
+    url = base64.b64decode('aHR0cDovLzgyLnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2'+
+        'NsaXN0L2dldD9jYj1qUXVlcnkxMTI0MDQ4Njk5NjMwMDk1MTM3NzE0XzE2Mjc0Nzc0OTU'+
+        'wNjQmcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
+        'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+
+        bkid+base64.b64decode('K2Y6ITUwJmZpZWxkcz1mMyxmNixmMTIsZjE0LGYyMCZfPQ==').decode()
+    a = east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
+        'jQuery1124048699630095137714_1627477495064')
     return a
