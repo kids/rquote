@@ -299,8 +299,8 @@ def get_bk_stocks(bkid):
     url = base64.b64decode('aHR0cDovLzgyLnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2'+
         'NsaXN0L2dldD9jYj1qUXVlcnkxMTI0MDQ4Njk5NjMwMDk1MTM3NzE0XzE2Mjc0Nzc0OTU'+
         'wNjQmcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
-        'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+
-        bkid+base64.b64decode('K2Y6ITUwJmZpZWxkcz1mMyxmNixmMTIsZjE0LGYyMCZfPQ==').decode()
+        'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+ \
+        bkid + base64.b64decode('K2Y6ITUwJmZpZWxkcz1mMyxmNixmMTIsZjE0LGYyMCZfPQ==').decode()
     a = east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
         'jQuery1124048699630095137714_1627477495064')
     return a
