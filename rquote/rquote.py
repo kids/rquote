@@ -170,12 +170,17 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
         except Exception as e:
             logging.warning('error get price {}, err {}'.format(i[2:-4], e))
             return i, 'None', pd.DataFrame([])
+
+    if i[0] in ['0', '1', '3', '5', '6']:
+        i = 'sh'+i if i[0] in ['5', '6'] else 'sz'+i
     if i[:2] in ['sh', 'sz']:
         url = qtimg_stock.format(i, freq, sdate, edate, days, fq)
-    if i[:2] == 'hk':
+    elif i[:2] == 'hk':
         url = qtimg_stock_hk.format(i, freq, sdate, edate, days, fq)
-    if i[:2] == 'us':
+    elif i[:2] == 'us':
         url = qtimg_stock_us.format(i, freq, sdate, edate, days, fq)
+    else:
+        raise ValueError('target market not supported')
     a = reqget(url)
     #a = json.loads(a.text.replace('kline_dayqfq=', ''))['data'][i]
     a = json.loads(a.text)['data'][i]
