@@ -111,8 +111,8 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
         a = dd.get(i)
         if a:
             n, d = a
-        logging.debug('loading price from dd {}'.format(i))
-        return i, n, d
+            logging.debug('loading price from dd {}'.format(i))
+            return i, n, d
     logging.debug('fetching price of {}'.format(i))
     qtimg_stock = base64.b64decode('aHR0cDovL3dlYi5pZnpxLmd0aW1nLmNuL2FwcHN0b2' +
                                    'NrL2FwcC9uZXdmcWtsaW5lL2dldD9wYXJhbT17fSx7' +
@@ -253,7 +253,7 @@ def get_concept_stks(bkid, dc=None):
                          'TAmZmlkPWY2MiZwbz0xJnB6PTUwMCZwbj0xJm5wPTEmZmx0dD0yJmludnQ9MiZmcz' +
                          '1iJTNB').decode() +
         bkid +
-        '&fields=f12%2Cf14').text
+        '&fields=f3%2Cf6%2Cf12%2Cf14%2Cf21').text
     a = json.loads(
         a.split('jQuery1123040570538569470105_1618047990690(')[1][:-2])['data']['diff']
     logging.debug('get fresh conc {}'.format(bkid))

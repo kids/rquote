@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
-import requests
 import re
 import os
 import time
-import logging
-import random
 import json
+import random
+import logging
+import requests
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 hdl = logging.FileHandler('/tmp/rquote.log')
@@ -215,12 +217,12 @@ class BasicFactors:
 
 class DataFormatter:
     @staticmethod
-    def s_join_sh_close_change(i, dsh=None, sdate='', edate=''):
+    def s_join_sh_close_change(d, dsh=None, sdate='', edate=''):
         '''
         join 2 DataFrames, used in single stock with sh index;
         keeping columns of 'close' and 'change'
         '''
-        d = get_price(i, sdate, edate)[2].dropna() if isinstance(i, str) else i
+        dsh['p_change'] = (dsh.close - dsh.close.shift(1)) * 100 / dsh.close.shift(1)
         d['p_change'] = (d.close - d.close.shift(1)) * 100 / d.close.shift(1)
         if not len(d) or dsh is None:
             return d
