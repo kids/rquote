@@ -305,7 +305,20 @@ def get_bk_stocks(bkid):
         'NsaXN0L2dldD9jYj1qUXVlcnkxMTI0MDQ4Njk5NjMwMDk1MTM3NzE0XzE2Mjc0Nzc0OTU'+
         'wNjQmcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
         'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+ \
-        bkid + base64.b64decode('K2Y6ITUwJmZpZWxkcz1mMyxmNixmMTIsZjE0LGYyMCZfPQ==').decode()
+        bkid + '+f:!50&fields=f3,f6,f12,f14,f20&_='
     a = east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
         'jQuery1124048699630095137714_1627477495064')
     return a
+
+
+def get_industry_stocks(bkid):
+    url = base64.b64decode('aHR0cHM6Ly82Mi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC'+
+        '9jbGlzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA4Mzc4MjAwMDc0NDQ0MzA5XzE2Mjc4MjQ2MDM'+
+        '1NjImcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
+        'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+ \
+        bkid + '+f:!50&fields=f3,f6,f12,f14,f20&_='
+    a = east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
+        'jQuery112408378200074444309_1627824603562')
+    return a
+
+    

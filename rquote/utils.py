@@ -237,19 +237,20 @@ class DataFormatter:
             DataFrame with index column as keys
         sort by dataframe values cosine similarity
         '''
-        keys=list(df.index)
-        cs=cosine_similarity(df)
+        from sklearn.metrics.pairwise import cosine_similarity
+        keys = list(df.index)
+        cs = cosine_similarity(df)
 
         to_sort_keys = [i for i in keys[1:]]
         sorted_keys = [keys[0]]
         
-        cid=0
+        cid = 0
         for i in range(len(keys)-1):
             for j in np.argsort(cs[cid])[::-1]:
                 if keys[j] not in sorted_keys:
                     sorted_keys.append(keys[j])
                     to_sort_keys.remove(keys[j])
-                    cid=j
+                    cid = j
                     break
         return sorted_keys
 
@@ -262,6 +263,7 @@ class DataFormatter:
         dc: dict of concept {concept: [stock]}
         TODO abstract it
         '''
+        from collections import Counter
         nhb.index = nhb.sid
         nhe.index = nhe.sname
         nhe['conc'] = ''
@@ -271,9 +273,7 @@ class DataFormatter:
         for i, j in nhb.sort_values('imf2', ascending=False)[
                 ['sid', 'sname']].iterrows():
             ti = []
-            n = get_concept_stks(j.sid, dc=dc)
-            if j.sid not in dc:
-                dc[j.sid] = n
+            n = dc.get(j.sid)
             for s in n:
                 if s in stks:
                     stkinconc.append(s)
@@ -284,7 +284,7 @@ class DataFormatter:
                         'list'] = '{}/{}:{}'.format(len(ti),
                                                     len(n),
                                                     ';'.join(ti))
-        stkr = Counter(stkinconc).most_common(50)
+        stkr = Counter(stkinconc).most_common(200)
         stkr = pd.DataFrame(stkr, columns=['sname', 'concs'])
         nhe.index = nhe.sid
         nhe = nhe.merge(
@@ -313,3 +313,4 @@ class reqget:
             logger.error(f'fetch {self.url} err')
             self.text = ''
             self.content = b''
+
