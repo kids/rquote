@@ -254,7 +254,7 @@ class DataFormatter:
         return sorted_keys
 
     @staticmethod
-    def count_concepts(nhe, nhb, dc):
+    def join_stock_concepts(nhe, nhb, dc):
         '''
         merge stock df with concept df with summerized result
         nhe: stock df with sid, sname

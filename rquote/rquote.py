@@ -153,7 +153,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
             d = pd.DataFrame([i.split(',') for i in a['data']['klines']], columns=[
                              'date', 'open', 'close', 'high', 'low', 'vol', 'money', 'p'])
             d = d.set_index(['date']).astype(float)
-            d.index = pd.DatetimeIndex(d.index)
+            # d.index = pd.DatetimeIndex(d.index)
             return i, name, d
         except Exception as e:
             logging.warning('error fetching {}, err: {}'.format(i, e))
@@ -165,7 +165,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
                 i[2:-4] + '0', '', i[2:-4] + '0', '')).text.split('(')[1][:-2]))
             d.columns = ['date', 'open', 'close', 'high', 'low', 'vol', 'p']
             d = d.set_index(['date']).astype(float)
-            d.index = pd.DatetimeIndex(d.index)
+            # d.index = pd.DatetimeIndex(d.index)
             return i[2:-4], '', d
         except Exception as e:
             logging.warning('error get price {}, err {}'.format(i[2:-4], e))
