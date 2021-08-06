@@ -330,6 +330,7 @@ def get_hk_stocks_ggt():
         'NzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOkRMTUswMTQ2LGI6RExNSzAxN'+
         'DQmZmllbGRzPWYzLGY2LGYxMixmMTQsZjIwJl89',
         'jQuery1124024362308906615082_1628258931224')
+    a = [ ['hk'+i[0], i[1], i[2], i[3], i[4]] for i in a]
     logging.debug('get hk stocks GangGuTong {}'.format(len(a)))
     return a
 
@@ -341,6 +342,7 @@ def get_hk_stocks_hsi():
         'NzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOkRMTUswMTQxJmZpZWxkcz1mM'+
         'yxmNixmMTIsZjE0LGYyMCZfPQ==',
         'jQuery112407888868459479792_1628259564671')
+    a = [ ['hk'+i[0], i[1], i[2], i[3], i[4]] for i in a]
     logging.debug('get hk stocks HSI {}'.format(len(a)))
     return a
 
