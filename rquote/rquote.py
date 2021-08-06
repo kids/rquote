@@ -87,7 +87,7 @@ def get_cn_fund():
         'tcGxlP3BhZ2U9MSZudW09MTAwMCZzb3J0PWFtb3VudCZhc2M9MCZub2RlPWV0Zl9ocV9m'+
         'dW5kJiU1Qm9iamVjdCUyMEhUTUxEaXZFbGVtZW50JTVEPXhtNGkw').decode()).text
     if a:
-        fundcands = [[i['symbol'],i['name'],i['changepercent']*100,i['amount'],i['trade']]
+        fundcands = [[i['symbol'],i['name'],i['changepercent'],i['amount'],i['trade']]
                      for i in json.loads(a.split('k2WazK06NQwlhyXv')[1][3:-2])]
     return fundcands
 
