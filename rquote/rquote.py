@@ -337,9 +337,9 @@ def get_hk_stocks_ggt():
 def get_hk_stocks_hsi():
     a = _east_list_fmt('aHR0cHM6Ly81Ni5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbG'+
         'lzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3ODg4ODY4NDU5NDc5NzkyXzE2MjgyNTk1NjQ2NzE'+
-        'mcG49MSZwej0yMCZwbz0xJm5wPTEmdXQ9YmQxZDlkZGIwNDA4OTcwMGNmOWMyN2Y2Zjc0'+
-        'MjYyODEmZmx0dD0yJmludnQ9MiZmaWQ9ZjYmZnM9YjpETE1LMDE0MSZmaWVsZHM9ZjMsZ'+
-        'jYsZjEyLGYxNCxmMjAmXz0=',
+        'mcG49MSZwej0xMDAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZm'+
+        'NzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOkRMTUswMTQxJmZpZWxkcz1mM'+
+        'yxmNixmMTIsZjE0LGYyMCZfPQ==',
         'jQuery112407888868459479792_1628259564671')
     logging.debug('get hk stocks HSI {}'.format(len(a)))
     return a
