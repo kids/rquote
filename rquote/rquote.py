@@ -53,15 +53,15 @@ def get_cn_stocks_by_amount(money_min=2e8):
     return a
 
 
-def get_hk_stocks_hotest80():
-    a = reqget(
-        'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php' +
-        '/Market_Center.getHKStockData?page=1&num=80&sort=amount&asc=0&node=' +
-        'qbgg_hk&_s_r_a=sort').text
-    if a:
-        a = [['hk'+i['symbol'], i['name'], i['changepercent'], i['amount'],
-            i['market_value']] for i in json.loads(a)]
-    return a
+# def get_hk_stocks_hotest80():
+#     a = reqget(
+#         'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php' +
+#         '/Market_Center.getHKStockData?page=1&num=80&sort=amount&asc=0&node=' +
+#         'qbgg_hk&_s_r_a=sort').text
+#     if a:
+#         a = [['hk'+i['symbol'], i['name'], i['changepercent'], i['amount'],
+#             i['market_value']] for i in json.loads(a)]
+#     return a
 
 
 def get_us_stocks_hotest30():
@@ -77,6 +77,10 @@ def get_us_stocks_hotest30():
 
 
 def get_cn_fund():
+    '''
+    Return sorted etf list ordered by latest amount of money,
+    item in returned list are [code, name, change, amount, price]
+    '''
     a = reqget(base64.b64decode('aHR0cDovL3ZpcC5zdG9jay5maW5hbmNlLnNpbmEuY29tL'+
         'mNuL3F1b3Rlc19zZXJ2aWNlL2FwaS9qc29ucC5waHAvSU8uWFNSVjIuQ2FsbGJhY2tMaX'+
         'N0WydrMldhekswNk5Rd2xoeVh2J10vTWFya2V0X0NlbnRlci5nZXRIUU5vZGVEYXRhU2l'+
@@ -89,6 +93,14 @@ def get_cn_fund():
 
 
 def get_cn_future():
+    '''
+    Return cn future id list, with prefix of `fu`
+    e.g. ['fuSC2109',
+          'fuRB2110',
+          'fuHC2110',
+          'fuFU2109',
+          ...]
+    '''
     a = reqget('https://finance.sina.com.cn/futuremarket/').text
     if a:
         futurelist_active = [
@@ -217,7 +229,7 @@ def get_price_longer(i, l=2, dd={}):
 
 def get_stock_concepts(i) -> []:
     '''
-    Return concept list of a stock, from eastmoney
+    Return concept id(start with `BK`) list of a stock, from eastmoney
     '''
     f10url = base64.b64decode('aHR0cDovL2YxMC5lYXN0bW9uZXkuY29tLy9Db3JlQ29uY2V' +
                               'wdGlvbi9Db3JlQ29uY2VwdGlvbkFqYXg/Y29kZT0=').decode()
@@ -263,6 +275,7 @@ def get_concept_stks(bkid, dc=None):
 
 def _east_list_fmt(burl, api_name):
     '''
+    formatter of eastmoney api
     Return list of list:
         [sid, name, rise, amount, mkt]
     '''
@@ -278,6 +291,10 @@ def _east_list_fmt(burl, api_name):
 
 
 def get_all_industries():
+    '''
+    Return sorted industry item list ordered by latest amount of money,
+    item in returned list are [code, name, change, amount, price]
+    '''
     a = _east_list_fmt('aHR0cHM6Ly84Ny5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
         'zdC9nZXQ/Y2I9alF1ZXJ5MTEyNDAzNzExNzU2NTU3MTk3MTM0NV8xNjI3MDQ3MTg4NTk5'+
         'JnBuPTEmcHo9MTAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZmN'+
@@ -289,6 +306,10 @@ def get_all_industries():
 
 
 def get_all_concepts():
+    '''
+    Return sorted concept item list ordered by latest amount of money,
+    item in returned list are [code, name, change, amount, price]
+    '''
     a = _east_list_fmt('aHR0cHM6Ly8yMi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
         'zdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3MzI5ODQxOTMwNzY4OTc5XzE2MjcxMDk0NjA2MzMm'+
         'cG49MSZwej00MDAmcG89MSZucD0xJnV0PWJkMWQ5ZGRiMDQwODk3MDBjZjljMjdmNmY3N'+
@@ -300,6 +321,10 @@ def get_all_concepts():
 
 
 def get_bk_stocks(bkid):
+    '''
+    Return stock item list of given bk id,
+    item in returned list are [code, name, change, amount, price]
+    '''
     url = base64.b64decode('aHR0cDovLzgyLnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2'+
         'NsaXN0L2dldD9jYj1qUXVlcnkxMTI0MDQ4Njk5NjMwMDk1MTM3NzE0XzE2Mjc0Nzc0OTU'+
         'wNjQmcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
@@ -312,6 +337,10 @@ def get_bk_stocks(bkid):
 
 
 def get_industry_stocks(bkid):
+    '''
+    Return sorted industry item list ordered by latest amount of money,
+    item in returned list are [code, name, change, amount, price]
+    '''
     url = base64.b64decode('aHR0cHM6Ly82Mi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC'+
         '9jbGlzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA4Mzc4MjAwMDc0NDQ0MzA5XzE2Mjc4MjQ2MDM'+
         '1NjImcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
@@ -324,6 +353,10 @@ def get_industry_stocks(bkid):
 
 
 def get_hk_stocks_ggt():
+    '''
+    Return sorted stock item list in GangGuTong, ordered by amount of money,
+    item in returned list are [code, name, change, amount, price]
+    '''
     a = _east_list_fmt('aHR0cHM6Ly8yLnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2NsaX'+
         'N0L2dldD9jYj1qUXVlcnkxMTI0MDI0MzYyMzA4OTA2NjE1MDgyXzE2MjgyNTg5MzEyMjQ'+
         'mcG49MSZwej0xMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZm'+
@@ -336,6 +369,10 @@ def get_hk_stocks_ggt():
 
 
 def get_hk_stocks_hsi():
+    '''
+    Return sorted stock item list in HSI, ordered by amount of money,
+    item in returned list are [code, name, change, amount, price]
+    '''
     a = _east_list_fmt('aHR0cHM6Ly81Ni5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbG'+
         'lzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3ODg4ODY4NDU5NDc5NzkyXzE2MjgyNTk1NjQ2NzE'+
         'mcG49MSZwej0xMDAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZm'+
