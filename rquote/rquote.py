@@ -76,15 +76,14 @@ def get_us_stocks_hotest30():
     return uscands
 
 
-def get_cn_fund_hotest200():
-    a = reqget(base64.b64decode('aHR0cDovL3ZpcC5zdG9jay5maW5hbmNlLnNpbmEuY29' +
-                                'tLmNuL3F1b3Rlc19zZXJ2aWNlL2FwaS9qc29ucC5waHAvSU8uWFNSVjIuQ2FsbGJh' +
-                                'Y2tMaXN0WydrMldhekswNk5Rd2xoeVh2J10vTWFya2V0X0NlbnRlci5nZXRIUU5vZ' +
-                                'GVEYXRhU2ltcGxlP3BhZ2U9MSZudW09MTIwJnNvcnQ9YW1vdW50JmFzYz0wJm5vZG' +
-                                'U9ZXRmX2hxX2Z1bmQmJTVCb2JqZWN0JTIwSFRNTERpdkVsZW1lbnQlNUQ9eG00aTA='
-                                ).decode()).text
+def get_cn_fund():
+    a = reqget(base64.b64decode('aHR0cDovL3ZpcC5zdG9jay5maW5hbmNlLnNpbmEuY29tL'+
+        'mNuL3F1b3Rlc19zZXJ2aWNlL2FwaS9qc29ucC5waHAvSU8uWFNSVjIuQ2FsbGJhY2tMaX'+
+        'N0WydrMldhekswNk5Rd2xoeVh2J10vTWFya2V0X0NlbnRlci5nZXRIUU5vZGVEYXRhU2l'+
+        'tcGxlP3BhZ2U9MSZudW09MTAwMCZzb3J0PWFtb3VudCZhc2M9MCZub2RlPWV0Zl9ocV9m'+
+        'dW5kJiU1Qm9iamVjdCUyMEhUTUxEaXZFbGVtZW50JTVEPXhtNGkw').decode()).text
     if a:
-        fundcands = [i['symbol']
+        fundcands = [[i['symbol'],i['name'],i['changepercent']*100,i['amount'],i['trade']]
                      for i in json.loads(a.split('k2WazK06NQwlhyXv')[1][3:-2])]
     return fundcands
 
@@ -262,7 +261,7 @@ def get_concept_stks(bkid, dc=None):
     return a
 
 
-def east_list_fmt(burl, api_name):
+def _east_list_fmt(burl, api_name):
     '''
     Return list of list:
         [sid, name, rise, amount, mkt]
@@ -279,7 +278,7 @@ def east_list_fmt(burl, api_name):
 
 
 def get_all_industries():
-    a = east_list_fmt('aHR0cHM6Ly84Ny5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
+    a = _east_list_fmt('aHR0cHM6Ly84Ny5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
         'zdC9nZXQ/Y2I9alF1ZXJ5MTEyNDAzNzExNzU2NTU3MTk3MTM0NV8xNjI3MDQ3MTg4NTk5'+
         'JnBuPTEmcHo9MTAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZmN'+
         'zQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mMyZmcz1tOjkwK3Q6MitmOiE1MCZmaWVsZH'+
@@ -290,7 +289,7 @@ def get_all_industries():
 
 
 def get_all_concepts():
-    a = east_list_fmt('aHR0cHM6Ly8yMi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
+    a = _east_list_fmt('aHR0cHM6Ly8yMi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
         'zdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3MzI5ODQxOTMwNzY4OTc5XzE2MjcxMDk0NjA2MzMm'+
         'cG49MSZwej00MDAmcG89MSZucD0xJnV0PWJkMWQ5ZGRiMDQwODk3MDBjZjljMjdmNmY3N'+
         'DI2MjgxJmZsdHQ9MiZpbnZ0PTImZmlkPWYzJmZzPW06OTArdDozK2Y6ITUwJmZpZWxkcz'+
@@ -306,8 +305,9 @@ def get_bk_stocks(bkid):
         'wNjQmcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
         'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+ \
         bkid + '+f:!50&fields=f3,f6,f12,f14,f20&_='
-    a = east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
+    a = _east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
         'jQuery1124048699630095137714_1627477495064')
+    logging.debug('get bk stocks {}'.format(len(a)))
     return a
 
 
@@ -317,8 +317,32 @@ def get_industry_stocks(bkid):
         '1NjImcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
         'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+ \
         bkid + '+f:!50&fields=f3,f6,f12,f14,f20&_='
-    a = east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
+    a = _east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
         'jQuery112408378200074444309_1627824603562')
+    logging.debug('get industry stocks {}'.format(len(a)))
     return a
 
-    
+
+def get_hk_stocks_ggt():
+    a = _east_list_fmt('aHR0cHM6Ly8yLnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2NsaX'+
+        'N0L2dldD9jYj1qUXVlcnkxMTI0MDI0MzYyMzA4OTA2NjE1MDgyXzE2MjgyNTg5MzEyMjQ'+
+        'mcG49MSZwej0xMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZm'+
+        'NzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOkRMTUswMTQ2LGI6RExNSzAxN'+
+        'DQmZmllbGRzPWYzLGY2LGYxMixmMTQsZjIwJl89',
+        'jQuery1124024362308906615082_1628258931224')
+    logging.debug('get hk stocks GangGuTong {}'.format(len(a)))
+    return a
+
+
+def get_hk_stocks_hsi():
+    a = _east_list_fmt('aHR0cHM6Ly81Ni5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbG'+
+        'lzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3ODg4ODY4NDU5NDc5NzkyXzE2MjgyNTk1NjQ2NzE'+
+        'mcG49MSZwej0yMCZwbz0xJm5wPTEmdXQ9YmQxZDlkZGIwNDA4OTcwMGNmOWMyN2Y2Zjc0'+
+        'MjYyODEmZmx0dD0yJmludnQ9MiZmaWQ9ZjYmZnM9YjpETE1LMDE0MSZmaWVsZHM9ZjMsZ'+
+        'jYsZjEyLGYxNCxmMjAmXz0=',
+        'jQuery112407888868459479792_1628259564671')
+    logging.debug('get hk stocks HSI {}'.format(len(a)))
+    return a
+
+
+
