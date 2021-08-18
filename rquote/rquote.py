@@ -134,11 +134,9 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
     qtimg_stock_us = base64.b64decode('aHR0cDovL3dlYi5pZnpxLmd0aW1nLmNuL2FwcHN' +
                                       '0b2NrL2FwcC91c2Zxa2xpbmUvZ2V0P3BhcmFtPX' +
                                       't9LHt9LHt9LHt9LHt9LGhmcQ==').decode('utf-8')
-    sina_future_d = base64.b64decode('aHR0cHM6Ly9zdG9jazIuZmluYW5jZS5zaW5hLmNv' +
-                                     'bS5jbi9mdXR1cmVzL2FwaS9qc29ucC5waHAvdmFy' +
-                                     'JTIwX3t9e309L0lubmVyRnV0dXJlc05ld1NlcnZp' +
-                                     'Y2UuZ2V0RGFpbHlLTGluZT9zeW1ib2w9e30mXz17fQ==').decode()
-    # sina_future_d.format('FB0','2020_11_14','FB0','2020_11_14')
+    sina_future_d = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/'+
+            'var%20t1nf_{}=/InnerFuturesNewService.getDailyKLine?symbol={}'
+    # sina_future_d.format('FB0','FB0')
 
     if i[:2] == 'BK':
         try:
@@ -172,12 +170,13 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
 
     if i[:2] == 'fu':
         try:
+            ix = i[2:] if i[-1]=='0' else i[2:-4]
             d = pd.DataFrame(json.loads(reqget(sina_future_d.format(
-                i[2:-4] + '0', '', i[2:-4] + '0', '')).text.split('(')[1][:-2]))
-            d.columns = ['date', 'open', 'close', 'high', 'low', 'vol', 'p']
+                    ix, ix)).text.split('(')[1][:-2]))
+            d.columns = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
             d = d.set_index(['date']).astype(float)
             # d.index = pd.DatetimeIndex(d.index)
-            return i[2:-4], '', d
+            return i, '', d
         except Exception as e:
             logging.warning('error get price {}, err {}'.format(i[2:-4], e))
             return i, 'None', pd.DataFrame([])
@@ -248,7 +247,7 @@ def get_stock_concepts(i) -> []:
     return concepts
 
 
-def get_concept_stks(bkid, dc=None):
+def get_concept_stocks(bkid, dc=None):
     '''
     Return stocks of input bkid, e.g. BK0420, BK0900
     dc : dictionary of concepts, local cache with get/put
