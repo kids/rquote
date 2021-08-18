@@ -134,22 +134,20 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
     qtimg_stock_us = base64.b64decode('aHR0cDovL3dlYi5pZnpxLmd0aW1nLmNuL2FwcHN' +
                                       '0b2NrL2FwcC91c2Zxa2xpbmUvZ2V0P3BhcmFtPX' +
                                       't9LHt9LHt9LHt9LHt9LGhmcQ==').decode('utf-8')
-    sina_future_d = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/'+
+    sina_future_d = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/' + \
             'var%20t1nf_{}=/InnerFuturesNewService.getDailyKLine?symbol={}'
     # sina_future_d.format('FB0','FB0')
 
     if i[:2] == 'BK':
         try:
             a = reqget(base64.b64decode('aHR0cDovL3B1c2gyaGlzLmVhc3' +
-                                                   'Rtb25leS5jb20vYXBpL3F0L3N0' +
-                                                   'b2NrL2tsaW5lL2dldD9jYj1qUX' +
-                                                   'VlcnkxMTI0MDIyNTY2NDQ1ODcz' +
-                                                   'NzY2OTcyXzE2MTc4NjQ1NjgxMz' +
-                                                   'Emc2VjaWQ9OTAu').decode() + i +
-                                  '&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5' +
-                                  '&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58' +
-                                  '&klt=101&fqt=0&beg=19900101&end=20220101&_=1',
-                                  headers=WebUtils.headers())
+                               'Rtb25leS5jb20vYXBpL3F0L3N0b2NrL2tsaW5lL2dldD9jYj1qUX' +
+                               'VlcnkxMTI0MDIyNTY2NDQ1ODczNzY2OTcyXzE2MTc4NjQ1NjgxMz' +
+                               'Emc2VjaWQ9OTAu').decode() + i +
+                          '&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5' +
+                          '&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58' +
+                          '&klt=101&fqt=0&beg=19900101&end=20220101&_=1',
+                          headers=WebUtils.headers())
             if not a:
                 logging.warning('{} reqget failed: {}'.format(i, a))
                 return i, 'None', pd.DataFrame([])
