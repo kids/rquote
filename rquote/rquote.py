@@ -21,7 +21,7 @@ def make_tgts(mkts=['ch', 'hk', 'us', 'fund', 'future'], money_min=2e8) -> []:
     cands = []
 
 
-def get_cn_stocks_by_amount(money_min=2e8):
+def get_cn_stock_list(money_min=2e8):
     '''
     Return sorted stock list ordered by latest amount of money, cut at `money_min`
     item in returned list are [code, name, change, amount, mktcap]
@@ -64,22 +64,25 @@ def get_cn_stocks_by_amount(money_min=2e8):
 #     return a
 
 
-def get_us_stocks_hotest30():
+def get_us_stocks_biggest(k=60):
+    # return list of [symbol, name, price, volume, mktcap, pe]
+    uscands = []
     a = reqget(
-        'https://xueqiu.com/service/v5/stock/screener/quote/list?page=1&' +
-        'size=30&order=desc&orderby=amount&order_by=amount&market=US&type=us&_=' +
-        str(int(time.time() * 1000)), headers=WebUtils.headers()).text
+        "https://stock.finance.sina.com.cn/usstock/api/jsonp.php/IO.XSRV2."+
+        "CallbackList['f0j3ltzVzdo2Fo4p']/US_CategoryService.getList?page=1"+
+        "&num=60&sort=&asc=0&market=&id=", headers=WebUtils.headers()).text
     if a:
-        uslist = json.loads(a)['data']['list']
+        uslist = json.loads(a.split('(')[1][:-2])['data']
         # Warning: symbol not fitted
-        uscands = ['us' + i['symbol'] + '.OQ' for i in uslist]
+        uscands = [('us' + i['symbol'], i['name'], i['price'], i['volume'],
+            i['mktcap']) for i in uslist]
     return uscands
 
 
-def get_cn_fund():
+def get_cn_fund_list():
     '''
-    Return sorted etf list ordered by latest amount of money,
-    item in returned list are [code, name, change, amount, price]
+    Return sorted etf list (ordered by latest amount of money),
+        of [code, name, change, amount, price]
     '''
     a = reqget(base64.b64decode('aHR0cDovL3ZpcC5zdG9jay5maW5hbmNlLnNpbmEuY29tL'+
         'mNuL3F1b3Rlc19zZXJ2aWNlL2FwaS9qc29ucC5waHAvSU8uWFNSVjIuQ2FsbGJhY2tMaX'+
@@ -87,12 +90,12 @@ def get_cn_fund():
         'tcGxlP3BhZ2U9MSZudW09MTAwMCZzb3J0PWFtb3VudCZhc2M9MCZub2RlPWV0Zl9ocV9m'+
         'dW5kJiU1Qm9iamVjdCUyMEhUTUxEaXZFbGVtZW50JTVEPXhtNGkw').decode()).text
     if a:
-        fundcands = [[i['symbol'],i['name'],i['changepercent'],i['amount'],i['trade']]
+        fundcands = [[i['symbol'], i['name'], i['changepercent'], i['amount'], i['trade']]
                      for i in json.loads(a.split('k2WazK06NQwlhyXv')[1][3:-2])]
     return fundcands
 
 
-def get_cn_future():
+def get_cn_future_list():
     '''
     Return cn future id list, with prefix of `fu`
     e.g. ['fuSC2109',
@@ -222,6 +225,38 @@ def get_price_longer(i, l=2, dd={}):
         a = pd.concat((get_price(i, d0, d1)[2], a), 0).drop_duplicates()
         d1 = d0
     return i, name, a
+
+
+def get_tick(tgts=[]):
+    '''
+    Get quotes of a tick
+    tgt list format:
+        us stocks like gb_symbol, e.g. gb_aapl, gb_goog
+    Return list of dict of given symbols for current timestamp
+    '''
+    if not tgts:
+        return []
+    sina_tick = 'https://hq.sinajs.cn/?list='
+    head_row = ['name', 'price', 'price_change_rate', 'timesec',
+        'price_change', '_', '_', '_', '_', '_', 'volume', '_', '_',
+         '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_',
+         '_', 'last_close', '_', '_', '_', 'turnover', '_', '_', '_', '_']
+
+    if type(tgts) == list:
+        tgts = ['gb_' + i[2:].lower() for i in tgts]
+    elif type(tgts) == str:
+        tgts = ['gb_' + tgts]
+    else:
+        raise ValueError('tgt should be list or str with market prefix, e.g. usAPPL,')
+    txt = reqget(sina_tick + ','.join(tgts))
+    if not txt:
+        logging.warning('reqget failed {}'.format(tgts))
+        return []
+
+    dat = [i.split('"')[1].split(',') for i in txt.split(';\n') if '"' in i]
+    dat_trim = [{k:i[j] for j,k in enumerate(head_row) if k!='_'} for i in dat]
+    #logging.warming('data not complete: {}'.format(tgts))
+    return dat_trim
 
 
 def get_stock_concepts(i) -> []:
@@ -379,6 +414,7 @@ def get_hk_stocks_hsi():
     a = [ ['hk'+i[0], i[1], i[2], i[3], i[4]] for i in a]
     logging.debug('get hk stocks HSI {}'.format(len(a)))
     return a
+
 
 
 
