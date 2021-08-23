@@ -247,15 +247,19 @@ def get_tick(tgts=[]):
     elif type(tgts) == str:
         tgts = ['gb_' + tgts]
     else:
-        raise ValueError('tgt should be list or str with market prefix, e.g. usAPPL,')
-    txt = reqget(sina_tick + ','.join(tgts))
-    if not txt:
+        raise ValueError('tgt should be list or str, e.g. APPL,')
+
+    a = reqget(sina_tick + ','.join(tgts))
+    if not a:
         logging.warning('reqget failed {}'.format(tgts))
         return []
 
-    dat = [i.split('"')[1].split(',') for i in txt.split(';\n') if '"' in i]
-    dat_trim = [{k:i[j] for j,k in enumerate(head_row) if k!='_'} for i in dat]
-    #logging.warming('data not complete: {}'.format(tgts))
+    try:
+        dat = [i.split('"')[1].split(',') for i in a.text.split(';\n') if '"' in i]
+        dat_trim = [{k:i[j] for j,k in enumerate(head_row) if k!='_'} for i in dat]
+    except Exception as e:
+        logging.warming('data not complete, check tgt be code str or list without'+
+            ' prefix, your given: {}'.format(tgts))
     return dat_trim
 
 
