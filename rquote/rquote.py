@@ -32,7 +32,7 @@ def get_cn_stock_list(money_min=2e8):
             'Tk2MSZwbj0xJnB6PTEwMDAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2'+
             'Y5YzI3ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1tOjArdDo2LG0'+
             '6MCt0OjgwLG06MSt0OjIsbToxK3Q6MjMmZmllbGRzPWYxMixmMTQsZjMsZjYsZjIxJl89'
-            ).decode()+str(int(time.time()*1e3))
+            ).decode() + str(int(time.time()*1e3))
     )
     if a:
         a = json.loads(a.text.split(
@@ -111,7 +111,7 @@ def get_cn_future_list():
     return futurelist_active
 
 
-def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
+def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
               dd=None) -> (str, str, pd.DataFrame):
     '''
     Args:
@@ -128,15 +128,12 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='hfq',
             logging.debug('loading price from dd {}'.format(i))
             return i, n, d
     logging.debug('fetching price of {}'.format(i))
-    qtimg_stock = base64.b64decode('aHR0cDovL3dlYi5pZnpxLmd0aW1nLmNuL2FwcHN0b2' +
-                                   'NrL2FwcC9uZXdmcWtsaW5lL2dldD9wYXJhbT17fSx7' +
-                                   'fSx7fSx7fSx7fSxoZnE=').decode('utf-8')
-    qtimg_stock_hk = base64.b64decode('aHR0cDovL3dlYi5pZnpxLmd0aW1nLmNuL2FwcHN' +
-                                      '0b2NrL2FwcC9oa2Zxa2xpbmUvZ2V0P3BhcmFtPX' +
-                                      't9LHt9LHt9LHt9LHt9LGhmcQ==').decode('utf-8')
-    qtimg_stock_us = base64.b64decode('aHR0cDovL3dlYi5pZnpxLmd0aW1nLmNuL2FwcHN' +
-                                      '0b2NrL2FwcC91c2Zxa2xpbmUvZ2V0P3BhcmFtPX' +
-                                      't9LHt9LHt9LHt9LHt9LGhmcQ==').decode('utf-8')
+    qtimg_stock = 'http://web.ifzq.gtimg.cn/appstock/app/newfqkline/get?param=' + \
+            '{},{},{},{},{},{}'
+    qtimg_stock_hk = 'http://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get?' + \
+            'param={},{},{},{},{},{}'
+    qtimg_stock_us = 'http://web.ifzq.gtimg.cn/appstock/app/usfqkline/get?' + \
+            'param={},{},{},{},{},{}'
     sina_future_d = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/' + \
             'var%20t1nf_{}=/InnerFuturesNewService.getDailyKLine?symbol={}'
     # sina_future_d.format('FB0','FB0')
@@ -243,7 +240,7 @@ def get_tick(tgts=[]):
          '_', 'last_close', '_', '_', '_', 'turnover', '_', '_', '_', '_']
 
     if type(tgts) == list:
-        tgts = ['gb_' + i[2:].lower() for i in tgts]
+        tgts = ['gb_' + i.lower() for i in tgts]
     elif type(tgts) == str:
         tgts = ['gb_' + tgts]
     else:
@@ -255,7 +252,7 @@ def get_tick(tgts=[]):
         return []
 
     try:
-        dat = [i.split('"')[1].split(',') for i in a.text.split(';\n') if '"' in i]
+        dat = [i.split('"')[1].split(',') for i in a.text.split(';\n') if ',' in i]
         dat_trim = [{k:i[j] for j,k in enumerate(head_row) if k!='_'} for i in dat]
     except Exception as e:
         logging.warming('data not complete, check tgt be code str or list without'+
