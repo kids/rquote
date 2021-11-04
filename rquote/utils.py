@@ -297,7 +297,6 @@ class DataFormatter:
         return nhe, nhb
 
 
-
 class reqget:
     '''
     class version request.get wrapper
