@@ -17,7 +17,7 @@ def read_requirements(filename):
 setup(
     name='rquote',
     python_requires='>=3.4.0',
-    version='0.2.0',
+    version='0.2.2',
     description='Mostly day quotes of cn/hk/us/fund/future markets, side with quote list fetch',
     long_description=read_file('README.md'),
     long_description_content_type="text/markdown",
@@ -38,5 +38,7 @@ setup(
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
     ],
 )
