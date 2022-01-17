@@ -72,7 +72,7 @@ def get_us_stocks_biggest(k=60):
         "CallbackList['f0j3ltzVzdo2Fo4p']/US_CategoryService.getList?page=1"+
         "&num=60&sort=&asc=0&market=&id=", headers=WebUtils.headers()).text
     if a:
-        uslist = json.loads(a.split('(')[1][:-2])['data']
+        uslist = json.loads(a.split('(',1)[1][:-2])['data']
         # Warning: symbol not fitted
         uscands = [('us' + i['symbol'], i['name'], i['price'], i['volume'],
             i['mktcap']) for i in uslist]
@@ -146,7 +146,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                                'Emc2VjaWQ9OTAu').decode() + i +
                           '&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5' +
                           '&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58' +
-                          '&klt=101&fqt=0&beg=19900101&end=20220101&_=1',
+                          '&klt=101&fqt=0&beg=19900101&end=20990101&_=1',
                           headers=WebUtils.headers())
             if not a:
                 logging.warning('{} reqget failed: {}'.format(i, a))

@@ -29,6 +29,7 @@ class PlotUtils:
         icolor, dcolor = 'red', 'green'
         _, n, v = get_price(i, sdate=sdate, edate=edate)
         v = (v - v.low.min()) * 10 / (v.high.max() - v.low.min()) + 2
+        v = v.round(3) # compress html data
         
         dt += [
                 go.Candlestick(

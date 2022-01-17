@@ -1,7 +1,7 @@
 '''
 rquote
 
-A stock history data api
+A stock history data api and related tools
 
 Copyright (c) 2021 Roi ZHAO
 
