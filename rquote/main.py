@@ -127,6 +127,9 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
             'param={},{},{},{},{},{}'
     sina_future_d = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/' + \
             'var%20t1nf_{}=/InnerFuturesNewService.getDailyKLine?symbol={}'
+    sina_btc = 'https://quotes.sina.cn/fx/api/openapi.php/BtcService.getDayKLine?' + \
+        'symbol=btcbtcusd'
+
     # sina_future_d.format('FB0','FB0')
 
     if i[:2] == 'BK':
@@ -160,12 +163,19 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
     if i[:2] == 'fu':
         try:
             ix = i[2:] if i[-1]=='0' else i[2:-4]
-            d = pd.DataFrame(json.loads(hget(sina_future_d.format(
-                    ix, ix)).text.split('(')[1][:-2]))
-            d.columns = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
+            if ix == 'btc':
+                url = sina_btc
+                d = json.loads(hget(url).text)['result']['data'].split('|')
+                d = pd.DataFrame([i.split(',') for i in d], 
+                                 columns=['date', 'open', 'high', 'low', 'close', 'vol', 'amount'])
+                return i, 'BTC', d
+            else:
+                d = pd.DataFrame(json.loads(hget(sina_future_d.format(
+                        ix, ix)).text.split('(')[1][:-2]))
+                d.columns = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
             d = d.set_index(['date']).astype(float)
             # d.index = pd.DatetimeIndex(d.index)
-            return i, '', d
+            return i, ix, d
         except Exception as e:
             logger.warning('error get price {}, err {}'.format(i[2:-4], e))
             return i, 'None', pd.DataFrame([])
