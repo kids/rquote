@@ -1,2 +1,2 @@
-requests
-pandas
+httpx >= 0.20.0
+pandas >= 1.0.0
