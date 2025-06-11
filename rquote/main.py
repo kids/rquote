@@ -5,7 +5,7 @@ import time
 import re
 import base64
 import pandas as pd
-from .utils import WebUtils, reqget, logger
+from .utils import WebUtils, hget, logger
 
 
 def make_tgts(mkts=['ch', 'hk', 'us', 'fund', 'future'], money_min=2e8) -> []:
@@ -17,7 +17,7 @@ def get_cn_stock_list(money_min=2e8):
     Return sorted stock list ordered by latest amount of money, cut at `money_min`
     item in returned list are [code, name, change, amount, mktcap]
     '''
-    a = reqget(
+    a = hget(
         base64.b64decode('aHR0cDovLzM4LnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2Ns'+
             'aXN0L2dldD9jYj1qUXVlcnkxMTI0MDk0NTg3NjE4NDQzNzQ4MDFfMTYyNzI4ODQ4O'+
             'Tk2MSZwbj0xJnB6PTEwMDAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2'+
@@ -45,7 +45,7 @@ def get_cn_stock_list(money_min=2e8):
 
 
 # def get_hk_stocks_hotest80():
-#     a = reqget(
+#     a = hget(
 #         'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php' +
 #         '/Market_Center.getHKStockData?page=1&num=80&sort=amount&asc=0&node=' +
 #         'qbgg_hk&_s_r_a=sort').text
@@ -58,7 +58,7 @@ def get_cn_stock_list(money_min=2e8):
 def get_us_stocks_biggest(k=60):
     # return list of [symbol, name, price, volume, mktcap, pe]
     uscands = []
-    a = reqget(
+    a = hget(
         "https://stock.finance.sina.com.cn/usstock/api/jsonp.php/IO.XSRV2."+
         "CallbackList['f0j3ltzVzdo2Fo4p']/US_CategoryService.getList?page=1"+
         "&num=60&sort=&asc=0&market=&id=", headers=WebUtils.headers()).text
@@ -75,7 +75,7 @@ def get_cn_fund_list():
     Return sorted etf list (ordered by latest amount of money),
         of [code, name, change, amount, price]
     '''
-    a = reqget(base64.b64decode('aHR0cDovL3ZpcC5zdG9jay5maW5hbmNlLnNpbmEuY29tL'+
+    a = hget(base64.b64decode('aHR0cDovL3ZpcC5zdG9jay5maW5hbmNlLnNpbmEuY29tL'+
         'mNuL3F1b3Rlc19zZXJ2aWNlL2FwaS9qc29ucC5waHAvSU8uWFNSVjIuQ2FsbGJhY2tMaX'+
         'N0WydrMldhekswNk5Rd2xoeVh2J10vTWFya2V0X0NlbnRlci5nZXRIUU5vZGVEYXRhU2l'+
         'tcGxlP3BhZ2U9MSZudW09MTAwMCZzb3J0PWFtb3VudCZhc2M9MCZub2RlPWV0Zl9ocV9m'+
@@ -95,7 +95,7 @@ def get_cn_future_list():
           'fuFU2109',
           ...]
     '''
-    a = reqget('https://finance.sina.com.cn/futuremarket/').text
+    a = hget('https://finance.sina.com.cn/futuremarket/').text
     if a:
         futurelist_active = [
             'fu' + i for i in re.findall(r'quotes/(.*?\d+).shtml', a)]
@@ -131,7 +131,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
 
     if i[:2] == 'BK':
         try:
-            a = reqget(base64.b64decode('aHR0cDovL3B1c2gyaGlzLmVhc3' +
+            a = hget(base64.b64decode('aHR0cDovL3B1c2gyaGlzLmVhc3' +
                                'Rtb25leS5jb20vYXBpL3F0L3N0b2NrL2tsaW5lL2dldD9jYj1qUX' +
                                'VlcnkxMTI0MDIyNTY2NDQ1ODczNzY2OTcyXzE2MTc4NjQ1NjgxMz' +
                                'Emc2VjaWQ9OTAu').decode() + i +
@@ -140,7 +140,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                           '&klt=101&fqt=0&beg=19900101&end=20990101&_=1',
                           headers=WebUtils.headers())
             if not a:
-                logger.warning('{} reqget failed: {}'.format(i, a))
+                logger.warning('{} hget failed: {}'.format(i, a))
                 return i, 'None', pd.DataFrame([])
             a = json.loads(a.text.split(
                 'jQuery1124022566445873766972_1617864568131(')[1][:-2])
@@ -160,7 +160,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
     if i[:2] == 'fu':
         try:
             ix = i[2:] if i[-1]=='0' else i[2:-4]
-            d = pd.DataFrame(json.loads(reqget(sina_future_d.format(
+            d = pd.DataFrame(json.loads(hget(sina_future_d.format(
                     ix, ix)).text.split('(')[1][:-2]))
             d.columns = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
             d = d.set_index(['date']).astype(float)
@@ -180,8 +180,9 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
         url = qtimg_stock_us.format(i, freq, sdate, edate, days, fq)
     else:
         raise ValueError('target market not supported')
-    a = reqget(url)
+    a = hget(url)
     #a = json.loads(a.text.replace('kline_dayqfq=', ''))['data'][i]
+    print('=====',url,a)
     a = json.loads(a.text)['data'][i]
     name = ''
     try:
@@ -237,9 +238,9 @@ def get_tick(tgts=[]):
     else:
         raise ValueError('tgt should be list or str, e.g. APPL,')
 
-    a = reqget(sina_tick + ','.join(tgts))
+    a = hget(sina_tick + ','.join(tgts))
     if not a:
-        logger.warning('reqget failed {}'.format(tgts))
+        logger.warning('hget failed {}'.format(tgts))
         return []
 
     try:
@@ -261,7 +262,7 @@ def get_stock_concepts(i) -> []:
     #drop_tails = ['板块', '概念', '0_', '成份', '重仓']
     url = f10url + i
     try:
-        concepts = json.loads(reqget(url).text)[
+        concepts = json.loads(hget(url).text)[
             'hxtc'][0]['ydnr'].split()
     except Exception as e:
         logger.error(str(e))
@@ -282,7 +283,7 @@ def get_concept_stocks(bkid, dc=None):
         if a:
             return a
     bkid = bkid if isinstance(bkid, str) else 'BK' + str(bkid).zfill(4)
-    a = reqget(
+    a = hget(
         base64.b64decode('aHR0cDovL3B1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2NsaXN0' +
                          'L2dldD9jYj1qUXVlcnkxMTIzMDQwNTcwNTM4NTY5NDcwMTA1XzE2MTgwNDc5OTA2O' +
                          'TAmZmlkPWY2MiZwbz0xJnB6PTUwMCZwbj0xJm5wPTEmZmx0dD0yJmludnQ9MiZmcz' +
@@ -303,7 +304,7 @@ def _east_list_fmt(burl, api_name):
     Return list of list:
         [sid, name, rise, amount, mkt]
     '''
-    a = reqget(base64.b64decode(burl).decode() +
+    a = hget(base64.b64decode(burl).decode() +
         str(int(time.time()*1e3)))
     if a:
         a = a.text

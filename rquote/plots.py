@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 
-import plotly.graph_objs as go
 from .main import get_price
 
 
 class PlotUtils:
+
     def plot_candle(i, sdate='', edate='', dsh=False, vol=True):
+
+        import plotly.graph_objs as go
         '''
             Plot candles of i
             Input: id

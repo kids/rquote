@@ -6,6 +6,7 @@ import logging
 import httpx
 import numpy as np
 import pandas as pd
+import uuid
 
 def setup_logger():
     logger = logging.getLogger('rquote')
@@ -22,27 +23,6 @@ def setup_logger():
     return logger
 
 logger = setup_logger()
-
-class CommonUtils:
-    @staticmethod
-    def rand_string():
-        return ''.join([chr(random.choice(range(97, 123))) for _ in
-                        range(random.choice(range(3, 7)))])
-
-    @staticmethod
-    def yesterday_of(day):
-        '''return 2020-12-31 if day = 2021-01-01'''
-        return time.strftime('%Y-%m-%d', time.localtime(time.mktime(
-            time.strptime(day, '%Y-%m-%d')) - 24 * 60 * 60))
-
-    @staticmethod
-    def sample_dates(year_earliest=2010, year_range=2):
-        y = random.randint(year_earliest, 2021 - 2)
-        m = str(random.randint(1, 12)).zfill(2)
-        d = str(random.randint(1, 28)).zfill(2)
-        date_begin = '{}-{}-{}'.format(y, m, d)
-        date_end = '{}-{}-{}'.format(y + 2, m, d)
-        return date_begin, date_end
 
 
 class WebUtils:
@@ -66,7 +46,7 @@ class WebUtils:
     @classmethod
     def headers(cls):
         header = {
-            'referer': CommonUtils.rand_string(),
+            'referer': str(uuid.uuid4()),
             'user-agent': cls.ua()
             }
         return header
@@ -135,23 +115,6 @@ class BasicFactors:
         return minres
 
     @staticmethod
-    def ma_divergence(d) -> float:
-        '''moving averages diverging rate'''
-        d = d.close
-        dlog5 = np.log(d.rolling(5).mean())
-        dlog10 = np.log(d.rolling(10).mean())
-        dlog20 = np.log(d.rolling(20).mean())
-        dlog60 = np.log(d.rolling(60).mean())
-        logmas = pd.DataFrame({'dl5': dlog5, 'dl10': dlog10, 'dl20': dlog20})
-        mstd20 = logmas.std(1).rolling(5).mean()
-        logmas = pd.DataFrame({'dl5': dlog5, 'dl10': dlog10,
-                              'dl20': dlog20, 'dl60': dlog60})
-        # mstd60=logmas.std(1).rolling(5).mean()
-        mv = logmas.max(1) + logmas.min(1) - \
-            logmas.max(1).shift(1) - logmas.min(1).shift(1)
-        return round(mv[-1] / mstd20[-2], 2)
-
-    @staticmethod
     def vol_extreme(d):
         d = d.vol
         v60max = d.rolling(60).max()
@@ -216,101 +179,19 @@ class BasicFactors:
         return ret
 
 
-class DataFormatter:
-    @staticmethod
-    def s_join_sh_close_change(d, dsh=None, sdate='', edate=''):
-        '''
-        join 2 DataFrames, used in single stock with sh index;
-        keeping columns of 'close' and 'change'
-        '''
-        dsh['p_change'] = (dsh.close - dsh.close.shift(1)) * 100 / dsh.close.shift(1)
-        d['p_change'] = (d.close - d.close.shift(1)) * 100 / d.close.shift(1)
-        if not len(d) or dsh is None:
-            return d
-        d = d.join(dsh[['open', 'close', 'p_change']], rsuffix='_sh').sort_index()
-        d['p_change_on_sh'] = d['p_change'] - d['p_change_sh']
-        return d
-
-    @staticmethod
-    def sort_keys_by_cossim(df):
-        '''
-        Input:
-            DataFrame with index column as keys
-        sort by dataframe values cosine similarity
-        '''
-        from sklearn.metrics.pairwise import cosine_similarity
-        keys = list(df.index)
-        cs = cosine_similarity(df)
-
-        to_sort_keys = [i for i in keys[1:]]
-        sorted_keys = [keys[0]]
-        
-        cid = 0
-        for i in range(len(keys)-1):
-            for j in np.argsort(cs[cid])[::-1]:
-                if keys[j] not in sorted_keys:
-                    sorted_keys.append(keys[j])
-                    to_sort_keys.remove(keys[j])
-                    cid = j
-                    break
-        return sorted_keys
-
-    @staticmethod
-    def join_stock_concepts(nhe, nhb, dc):
-        '''
-        merge stock df with concept df with summerized result
-        nhe: stock df with sid, sname
-        nhb: concept df with sid, sname
-        dc: dict of concept {concept: [stock]}
-        TODO abstract it
-        '''
-        from collections import Counter
-        nhb.index = nhb.sid
-        nhe.index = nhe.sname
-        nhe['conc'] = ''
-        nhb['list'] = [''] * len(nhb)
-        stks = nhe.sname.tolist()  # candidates
-        stkinconc = []
-        for i, j in nhb.sort_values('imf2', ascending=False)[
-                ['sid', 'sname']].iterrows():
-            ti = []
-            n = dc.get(j.sid)
-            for s in n:
-                if s in stks:
-                    stkinconc.append(s)
-                    ti.append(s)
-                    nhe.loc[s, 'conc'] = nhe.loc[s, 'conc'] + ',' + j.sname
-            if ti:
-                nhb.loc[j.sid,
-                        'list'] = '{}/{}:{}'.format(len(ti),
-                                                    len(n),
-                                                    ';'.join(ti))
-        stkr = Counter(stkinconc).most_common(200)
-        stkr = pd.DataFrame(stkr, columns=['sname', 'concs'])
-        nhe.index = nhe.sid
-        nhe = nhe.merge(
-            stkr,
-            on='sname',
-            how='left',
-            suffixes=(
-                '',
-                '_')).fillna('')
-        return nhe, nhb
-
-
-class reqget:
+class hget:
     '''
     class version request.get wrapper
     '''
     def __init__(self, url, *args, **kwargs):
         self.url = url
         try:
-            self.r = httpx.get(
-                self.url, allow_redirects=True, *args, **kwargs)
-            self.text = self.r.text
-            self.content = self.r.content
-        except BaseException:
-            logger.error(f'fetch {self.url} err')
+            r = httpx.get(
+                self.url, follow_redirects=True, *args, **kwargs)
+            self.text = r.text
+            self.content = r.content
+        except Exception as e:
+            logger.error(f'fetch {self.url} err: {e}')
             self.text = ''
             self.content = b''
 
