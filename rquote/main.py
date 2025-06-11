@@ -1,20 +1,11 @@
 # -*- coding: utf-8 -*-
 
-import os
-import requests
 import json
 import time
-import random
 import re
-import sys
 import base64
-import logging
 import pandas as pd
-from .utils import WebUtils, reqget
-# logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(filename='/tmp/rquote.log',
-                    format='%(asctime)-15s:%(lineno)s %(message)s',
-                    level=logging.INFO)
+from .utils import WebUtils, reqget, logger
 
 
 def make_tgts(mkts=['ch', 'hk', 'us', 'fund', 'future'], money_min=2e8) -> []:
@@ -125,9 +116,9 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
         a = dd.get(i)
         if a:
             n, d = a
-            logging.debug('loading price from dd {}'.format(i))
+            logger.debug('loading price from dd {}'.format(i))
             return i, n, d
-    logging.debug('fetching price of {}'.format(i))
+    logger.debug('fetching price of {}'.format(i))
     qtimg_stock = 'http://web.ifzq.gtimg.cn/appstock/app/newfqkline/get?param=' + \
             '{},{},{},{},{},{}'
     qtimg_stock_hk = 'http://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get?' + \
@@ -149,12 +140,12 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                           '&klt=101&fqt=0&beg=19900101&end=20990101&_=1',
                           headers=WebUtils.headers())
             if not a:
-                logging.warning('{} reqget failed: {}'.format(i, a))
+                logger.warning('{} reqget failed: {}'.format(i, a))
                 return i, 'None', pd.DataFrame([])
             a = json.loads(a.text.split(
                 'jQuery1124022566445873766972_1617864568131(')[1][:-2])
             if not a['data']:
-                logging.warning('{} data empty: {}'.format(i, a))
+                logger.warning('{} data empty: {}'.format(i, a))
                 return i, 'None', pd.DataFrame([])
             name = a['data']['name']
             d = pd.DataFrame([i.split(',') for i in a['data']['klines']], columns=[
@@ -163,7 +154,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
             # d.index = pd.DatetimeIndex(d.index)
             return i, name, d
         except Exception as e:
-            logging.warning('error fetching {}, err: {}'.format(i, e))
+            logger.warning('error fetching {}, err: {}'.format(i, e))
             return i, 'None', pd.DataFrame([])
 
     if i[:2] == 'fu':
@@ -176,7 +167,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
             # d.index = pd.DatetimeIndex(d.index)
             return i, '', d
         except Exception as e:
-            logging.warning('error get price {}, err {}'.format(i[2:-4], e))
+            logger.warning('error get price {}, err {}'.format(i[2:-4], e))
             return i, 'None', pd.DataFrame([])
 
     if i[0] in ['0', '1', '3', '5', '6']:
@@ -209,7 +200,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
         if 'qt' in a:
             name = a['qt'][i][1]
     except Exception as e:
-        logging.warning('error fetching {}, err: {}'.format(i, e))
+        logger.warning('error fetching {}, err: {}'.format(i, e))
     return i, name, b
 
 
@@ -248,14 +239,14 @@ def get_tick(tgts=[]):
 
     a = reqget(sina_tick + ','.join(tgts))
     if not a:
-        logging.warning('reqget failed {}'.format(tgts))
+        logger.warning('reqget failed {}'.format(tgts))
         return []
 
     try:
         dat = [i.split('"')[1].split(',') for i in a.text.split(';\n') if ',' in i]
         dat_trim = [{k:i[j] for j,k in enumerate(head_row) if k!='_'} for i in dat]
     except Exception as e:
-        logging.warming('data not complete, check tgt be code str or list without'+
+        logger.warming('data not complete, check tgt be code str or list without'+
             ' prefix, your given: {}'.format(tgts))
     return dat_trim
 
@@ -273,7 +264,7 @@ def get_stock_concepts(i) -> []:
         concepts = json.loads(reqget(url).text)[
             'hxtc'][0]['ydnr'].split()
     except Exception as e:
-        logging.error(str(e))
+        logger.error(str(e))
         concepts = ['']
     #concepts = [i for i in concepts if i not in drop_cons]
     #concepts = [i for i in concepts if i[-2:] not in drop_tails]
@@ -300,7 +291,7 @@ def get_concept_stocks(bkid, dc=None):
         '&fields=f3%2Cf6%2Cf12%2Cf14%2Cf21').text
     a = json.loads(
         a.split('jQuery1123040570538569470105_1618047990690(')[1][:-2])['data']['diff']
-    logging.debug('get fresh conc {}'.format(bkid))
+    logger.debug('get fresh conc {}'.format(bkid))
     a = [ ['sh'+i['f12'] if i['f12'][0]=='6' else 'sz'+i['f12'],
          i['f14'], i['f3'], i['f6'], i['f21']] for i in a]
     return a
@@ -334,7 +325,7 @@ def get_all_industries():
         'zQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mMyZmcz1tOjkwK3Q6MitmOiE1MCZmaWVsZH'+
         'M9ZjMsZjYsZjEyLGYxNCxmMjAsZjEwNCxmMTA1Jl89',
         'jQuery1124037117565571971345_1627047188599')
-    logging.debug('get industries {}'.format(len(a)))
+    logger.debug('get industries {}'.format(len(a)))
     return a
 
 
@@ -349,7 +340,7 @@ def get_all_concepts():
         'DI2MjgxJmZsdHQ9MiZpbnZ0PTImZmlkPWYzJmZzPW06OTArdDozK2Y6ITUwJmZpZWxkcz'+
         '1mMyxmNixmMTIsZjE0LGYyMCxmMTA0LGYxMDUmXz0='
         ,'jQuery112407329841930768979_1627109460633')
-    logging.debug('get concepts {}'.format(len(a)))
+    logger.debug('get concepts {}'.format(len(a)))
     return a
 
 
@@ -365,7 +356,7 @@ def get_bk_stocks(bkid):
         bkid + '+f:!50&fields=f3,f6,f12,f14,f20&_='
     a = _east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
         'jQuery1124048699630095137714_1627477495064')
-    logging.debug('get bk stocks {}'.format(len(a)))
+    logger.debug('get bk stocks {}'.format(len(a)))
     return a
 
 
@@ -381,7 +372,7 @@ def get_industry_stocks(bkid):
         bkid + '+f:!50&fields=f3,f6,f12,f14,f20&_='
     a = _east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
         'jQuery112408378200074444309_1627824603562')
-    logging.debug('get industry stocks {}'.format(len(a)))
+    logger.debug('get industry stocks {}'.format(len(a)))
     return a
 
 
@@ -397,7 +388,7 @@ def get_hk_stocks_ggt():
         'DQmZmllbGRzPWYzLGY2LGYxMixmMTQsZjIwJl89',
         'jQuery1124024362308906615082_1628258931224')
     a = [ ['hk'+i[0], i[1], i[2], i[3], i[4]] for i in a]
-    logging.debug('get hk stocks GangGuTong {}'.format(len(a)))
+    logger.debug('get hk stocks GangGuTong {}'.format(len(a)))
     return a
 
 
@@ -413,7 +404,7 @@ def get_hk_stocks_hsi():
         'yxmNixmMTIsZjE0LGYyMCZfPQ==',
         'jQuery112407888868459479792_1628259564671')
     a = [ ['hk'+i[0], i[1], i[2], i[3], i[4]] for i in a]
-    logging.debug('get hk stocks HSI {}'.format(len(a)))
+    logger.debug('get hk stocks HSI {}'.format(len(a)))
     return a
 
 

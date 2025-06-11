@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import os
-import time
-import logging
 import plotly.graph_objs as go
-from .rquote import get_price
-# logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(filename='/tmp/rquote.log',
-                    format='%(asctime)-15s:%(lineno)s %(message)s',
-                    level=logging.INFO)
+from .main import get_price
+
+
 class PlotUtils:
     def plot_candle(i, sdate='', edate='', dsh=False, vol=True):
         '''

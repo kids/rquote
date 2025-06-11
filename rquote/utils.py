@@ -1,22 +1,27 @@
 # -*- coding: utf-8 -*-
 
-import re
-import os
 import time
-import json
 import random
 import logging
-import requests
+import httpx
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
-hdl = logging.FileHandler('/tmp/rquote.log')
-hdl.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(hdl)
-logger.addHandler(logging.StreamHandler())
-logger.setLevel(logging.DEBUG)
+def setup_logger():
+    logger = logging.getLogger('rquote')
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
+        file_handler = logging.FileHandler('/var/log/rquote.log')
+        
+        formatter = logging.Formatter('%(asctime)-15s:%(lineno)s %(message)s')
+        file_handler.setFormatter(formatter)
+        
+        logger.addHandler(file_handler)
+        logger.addHandler(logging.StreamHandler())
+    
+    return logger
 
+logger = setup_logger()
 
 class CommonUtils:
     @staticmethod
@@ -67,18 +72,13 @@ class WebUtils:
         return header
 
     @classmethod
-    def reqget(cls, url, headers, method, proxy=None, proxy_type='http'):
+    def reqget(cls, url, headers, method, proxy=None):
         '''
         request.get() wrapper
         '''
         headers['user-agent'] = cls.ua
         try:
-            if proxy is not None:
-                r = requests.get(
-                    url, allow_redirects=True, proxies={
-                        proxy_type: proxy})
-            else:
-                r = requests.get(url, allow_redirects=True)
+            r = httpx.get(url, allow_redirects=True)
         except Exception as e:
             logger.error('Fetch url {} err: {}'.format(url, e))
             return None
@@ -89,18 +89,19 @@ class WebUtils:
                 return r.content
 
     @classmethod
-    def test_proxy(cls, proxy: str, proxy_type='http'):
+    def test_proxy(cls, proxy: str):
         '''
         proxy format 'ip:port'
         test baidu.com for cn
         # test google.com for non-cn (not effective due to DNS hijacking)
         '''
         try:
-            r = requests.get(
-                'https://baidu.com',
-                proxies={
-                    proxy_type: proxy},
-                timeout=2)
+            with httpx.Client(proxies=proxy) as client:
+                r = client.get('https://baidu.com', timeout=2)
+                if r.ok:
+                    return 1
+                else:
+                    return 0
         except Exception as e:
             logger.info(f'test proxy {proxy} negative')
             return 0
@@ -304,7 +305,7 @@ class reqget:
     def __init__(self, url, *args, **kwargs):
         self.url = url
         try:
-            self.r = requests.get(
+            self.r = httpx.get(
                 self.url, allow_redirects=True, *args, **kwargs)
             self.text = self.r.text
             self.content = self.r.content
