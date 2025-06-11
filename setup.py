@@ -1,8 +1,6 @@
 from os import path as os_path
 from setuptools import setup
 
-import rquote
-
 this_directory = os_path.abspath(os_path.dirname(__file__))
 
 def read_file(filename):
