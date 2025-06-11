@@ -163,7 +163,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
     if i[:2] == 'fu':
         try:
             ix = i[2:] if i[-1]=='0' else i[2:-4]
-            if ix == 'btc':
+            if ix == 'btc' or ix == 'BTC':
                 url = sina_btc
                 d = json.loads(hget(url).text)['result']['data'].split('|')
                 d = pd.DataFrame([i.split(',') for i in d], 
