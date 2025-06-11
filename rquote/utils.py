@@ -12,7 +12,7 @@ def setup_logger():
     logger = logging.getLogger('rquote')
     if not logger.handlers:
         logger.setLevel(logging.INFO)
-        file_handler = logging.FileHandler('/var/log/rquote.log')
+        file_handler = logging.FileHandler('/temp/rquote.log')
         
         formatter = logging.Formatter('%(asctime)-15s:%(lineno)s %(message)s')
         file_handler.setFormatter(formatter)
