@@ -8,11 +8,16 @@ import pandas as pd
 from .utils import WebUtils, hget, logger
 
 
-def make_tgts(mkts=['ch', 'hk', 'us', 'fund', 'future'], money_min=2e8) -> []:
-    cands = []
-
 
 def get_cn_stock_list(money_min=2e8):
+    ret = []
+    try:
+        ret = get_cn_stock_list_eastmoney(money_min)
+    except Exception as e:
+        ret = get_cn_stock_list_qq(money_min)
+    return ret
+
+def get_cn_stock_list_eastmoney(money_min=2e8):
     '''
     Return sorted stock list ordered by latest amount of money, cut at `money_min`
     item in returned list are [code, name, change, amount, mktcap]
@@ -28,31 +33,39 @@ def get_cn_stock_list(money_min=2e8):
     if a:
         a = json.loads(a.text.split(
             'jQuery112409458761844374801_1627288489961(')[1][:-2])
-
-    # cdir = os.path.dirname(__file__)
-    # with open(os.path.join(cdir, 'ranka'), 'wb') as f:
-    #     f.write(a.content)
-    # a = pd.read_excel(os.path.join(cdir, 'ranka'), header=1)
-    # os.remove(os.path.join(cdir, 'ranka'))
-    # a.columns = ['code', 'name', 'close', 'p_change', 'change', '_', '_', '_',
-    #              'money', 'open', 'yest_close', 'high', 'low']
-    # a = a[a.money > money_min]
     a = [ ['sh'+i['f12'] if i['f12'][0]=='6' else 'sz'+i['f12'],
          i['f14'], i['f3'], i['f6'], i['f21']] for i in a['data']['diff']
         if i['f6']!='-' and float(i['f6']) > money_min]
     #cands=[(i.code,i.name) for i in a[['code','name']].itertuples()]
     return a
 
+def get_cn_stock_list_qq(money_min=2e8):
+    offset = 0
+    count = 200 # max, or error
+    df = []
+    while not df or float(df[-1]['turnover'])*1e4 > money_min:
+        a = hget(
+            f'https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList?_appver=11.17.0'+
+            f'&board_code=aStock&sort_type=turnover&direct=down&offset={offset}&count={count}'
+        )
+        if a:
+            a = json.loads(a.text)
+            print('===',a)
+            if a['data']['rank_list']:
+                df.extend(a['data']['rank_list'])
+                offset += count
+            else:
+                break
+    return df
+    
 
-# def get_hk_stocks_hotest80():
-#     a = hget(
-#         'http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php' +
-#         '/Market_Center.getHKStockData?page=1&num=80&sort=amount&asc=0&node=' +
-#         'qbgg_hk&_s_r_a=sort').text
-#     if a:
-#         a = [['hk'+i['symbol'], i['name'], i['changepercent'], i['amount'],
-#             i['market_value']] for i in json.loads(a)]
-#     return a
+def get_hk_stocks_500():
+    a = hget(
+        'https://stock.gtimg.cn/data/hk_rank.php?board=main_all&metric=amount&' +
+        'pageSize=500&reqPage=1&order=desc&var_name=list_data').text
+    if a:
+        a = [i.split('~') for i in json.loads(a.split('list_data=')[1])['data']['page_data']]
+    return a
 
 
 def get_us_stocks_biggest(k=60):

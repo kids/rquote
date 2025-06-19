@@ -10,15 +10,19 @@ def test_get_price():
 
 def test_get_cn_stock_list():
     a = rquote.get_cn_stock_list()
-    print(a)
+    print('cn_stock_list', a)
+
+def test_get_hk_stocks_500():
+    a = rquote.get_hk_stocks_500()
+    print('hk_stocks_500', a)
 
 def test_get_hk_stocks_hsi():
     a = rquote.get_hk_stocks_hsi()
-    print(a)
+    print('hk_stocks_hsi', a)
 
 def test_get_hk_stocks_ggt():
     a = rquote.get_hk_stocks_ggt()
-    print(a)
+    print('hk_stocks_ggt', a)
 
 if __name__ == '__main__':
     test_get_cn_stock_list()
