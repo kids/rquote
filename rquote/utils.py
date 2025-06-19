@@ -52,7 +52,7 @@ class WebUtils:
         return header
 
     @classmethod
-    def reqget(cls, url, headers, method, proxy=None):
+    def http_get(cls, url, headers, method, proxy=None):
         '''
         request.get() wrapper
         '''
@@ -187,7 +187,8 @@ class hget:
         self.url = url
         try:
             r = httpx.get(
-                self.url, follow_redirects=True, *args, **kwargs)
+                self.url, follow_redirects=True, headers=WebUtils.headers(),
+                *args, **kwargs)
             self.text = r.text
             self.content = r.content
         except Exception as e:

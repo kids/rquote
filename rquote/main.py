@@ -192,7 +192,6 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
         raise ValueError('target market not supported')
     a = hget(url)
     #a = json.loads(a.text.replace('kline_dayqfq=', ''))['data'][i]
-    print('=====',url,a)
     a = json.loads(a.text)['data'][i]
     name = ''
     try:
