@@ -202,7 +202,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
     elif i[:2] == 'us':
         url = qtimg_stock_us.format(i, freq, sdate, edate, days, fq)
     else:
-        raise ValueError('target market not supported')
+        raise ValueError(f'target market not supported: {i}')
     a = hget(url)
     #a = json.loads(a.text.replace('kline_dayqfq=', ''))['data'][i]
     a = json.loads(a.text)['data'][i]
