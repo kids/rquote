@@ -12,9 +12,9 @@ from .utils import WebUtils, hget, logger
 def get_cn_stock_list(money_min=2e8):
     ret = []
     try:
-        ret = get_cn_stock_list_eastmoney(money_min)
-    except Exception as e:
         ret = get_cn_stock_list_qq(money_min)
+    except Exception as e:
+        ret = get_cn_stock_list_eastmoney(money_min)
     return ret
 
 def get_cn_stock_list_eastmoney(money_min=2e8):
@@ -45,7 +45,7 @@ def get_cn_stock_list_qq(money_min=2e8):
     df = []
     while not df or float(df[-1]['turnover'])*1e4 > money_min:
         a = hget(
-            f'https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList?_appver=11.17.0'+
+            'https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList?_appver=11.17.0'+
             f'&board_code=aStock&sort_type=turnover&direct=down&offset={offset}&count={count}'
         )
         if a:
@@ -68,18 +68,18 @@ def get_hk_stocks_500():
     return a
 
 
-def get_us_stocks_biggest(k=60):
+def get_us_stocks(k=100):
     # return list of [symbol, name, price, volume, mktcap, pe]
     uscands = []
-    a = hget(
-        "https://stock.finance.sina.com.cn/usstock/api/jsonp.php/IO.XSRV2."+
-        "CallbackList['f0j3ltzVzdo2Fo4p']/US_CategoryService.getList?page=1"+
-        "&num=60&sort=&asc=0&market=&id=", headers=WebUtils.headers()).text
-    if a:
-        uslist = json.loads(a.split('(',1)[1][:-2])['data']
-        # Warning: symbol not fitted
-        uscands = [('us' + i['symbol'], i['name'], i['price'], i['volume'],
-            i['mktcap']) for i in uslist]
+    page_n = k//20 + 1
+    for page in range(1, page_n+1):
+        a = hget(
+            "https://stock.finance.sina.com.cn/usstock/api/jsonp.php/IO.XSRV2."+
+            f"CallbackList['f0j3ltzVzdo2Fo4p']/US_CategoryService.getList?page={page}"+
+            "&num=20&sort=&asc=0&market=&id=", headers=WebUtils.headers()).text
+        if a:
+            uslist = json.loads(a.split('(',1)[1][:-2])['data']
+            uscands.extend(uslist)
     return uscands
 
 
