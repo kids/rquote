@@ -75,7 +75,7 @@ def get_us_stocks(k=100):
         a = hget(
             "https://stock.finance.sina.com.cn/usstock/api/jsonp.php/IO.XSRV2."+
             f"CallbackList['f0j3ltzVzdo2Fo4p']/US_CategoryService.getList?page={page}"+
-            "&num=20&sort=&asc=0&market=&id=", headers=WebUtils.headers()).text
+            "&num=20&sort=&asc=0&market=&id=").text
         if a:
             uslist = json.loads(a.split('(',1)[1][:-2])['data']
             uscands.extend(uslist)
@@ -152,8 +152,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                                'Emc2VjaWQ9OTAu').decode() + i +
                           '&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5' +
                           '&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58' +
-                          '&klt=101&fqt=0&beg=19900101&end=20990101&_=1',
-                          headers=WebUtils.headers())
+                          '&klt=101&fqt=0&beg=19900101&end=20990101&_=1')
             if not a:
                 logger.warning('{} hget failed: {}'.format(i, a))
                 return i, 'None', pd.DataFrame([])
