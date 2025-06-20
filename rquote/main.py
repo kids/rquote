@@ -50,7 +50,6 @@ def get_cn_stock_list_qq(money_min=2e8):
         )
         if a:
             a = json.loads(a.text)
-            print('===',a)
             if a['data']['rank_list']:
                 df.extend(a['data']['rank_list'])
                 offset += count
