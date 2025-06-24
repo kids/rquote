@@ -4,7 +4,6 @@ import time
 import random
 import logging
 import httpx
-import numpy as np
 import pandas as pd
 import uuid
 
