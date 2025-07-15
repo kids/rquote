@@ -114,6 +114,29 @@ def get_cn_future_list():
     return futurelist_active
 
 
+def _check_date_format(date_str):
+    # 允许格式: 2099-01-01
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        # 尝试转换
+        try:
+            # 常见格式尝试
+            t_struct = None
+            for fmt in ("%Y/%m/%d", "%Y%m%d", "%Y.%m.%d", "%Y_%m_%d", "%Y-%m-%d"):
+                try:
+                    t_struct = time.strptime(date_str, fmt)
+                    break
+                except Exception:
+                    continue
+            if t_struct is None:
+                raise ValueError(f"date format not recognized: {date_str}")
+            # 转换为标准格式
+            date_str_std = time.strftime("%Y-%m-%d", t_struct)
+            return date_str_std
+        except Exception as e:
+            raise ValueError(f"date format error: {date_str}, {e}")
+    return date_str
+
+
 def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
               dd=None) -> (str, str, pd.DataFrame):
     '''
@@ -131,6 +154,12 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
             logger.debug('loading price from dd {}'.format(i))
             return i, n, d
     logger.debug('fetching price of {}'.format(i))
+
+    # 检查sdate和edate格式
+    sdate = _check_date_format(sdate) if sdate else ''
+    edate = _check_date_format(edate) if edate else ''
+        
+
     qtimg_stock = 'http://web.ifzq.gtimg.cn/appstock/app/newfqkline/get?param=' + \
             '{},{},{},{},{},{}'
     qtimg_stock_hk = 'http://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get?' + \
@@ -431,5 +460,6 @@ def get_hk_stocks_hsi():
 
 if __name__ == "__main__":
     # print(get_cn_stock_list())
-    print(get_price('fuBTC'))
+    # print(get_price('fuBTC'))
+    print(get_price('sz000001', sdate='20240101', edate='20250101'))
 
