@@ -173,8 +173,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
 
     if i[:2] == 'fu':
         try:
-            ix = i[2:] if i[-1]=='0' else i[2:-4]
-            if ix == 'btc' or ix == 'BTC':
+            if i[2:5].lower() == 'btc':
                 url = sina_btc
                 d = json.loads(hget(url).text)['result']['data'].split('|')
                 d = pd.DataFrame([i.split(',') for i in d], 
@@ -430,4 +429,7 @@ def get_hk_stocks_hsi():
 
 
 
+if __name__ == "__main__":
+    # print(get_cn_stock_list())
+    print(get_price('fuBTC'))
 
