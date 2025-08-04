@@ -166,6 +166,8 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
             'param={},{},{},{},{},{}'
     qtimg_stock_us = 'http://web.ifzq.gtimg.cn/appstock/app/usfqkline/get?' + \
             'param={},{},{},{},{},{}'
+    qtimg_stock_us_min = 'https://web.ifzq.gtimg.cn/appstock/app/UsMinute/query?' + \
+            '_var=min_data_{}&code={}'
     sina_future_d = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/' + \
             'var%20t1nf_{}=/InnerFuturesNewService.getDailyKLine?symbol={}'
     sina_btc = 'https://quotes.sina.cn/fx/api/openapi.php/BtcService.getDayKLine?' + \
@@ -226,11 +228,20 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
     elif i[:2] == 'hk':
         url = qtimg_stock_hk.format(i, freq, sdate, edate, days, fq)
     elif i[:2] == 'us':
-        url = qtimg_stock_us.format(i, freq, sdate, edate, days, fq)
+        if freq in ('min', '1min', 'minute'):
+            url = qtimg_stock_us_min.format(i.replace('.', ''), i)
+        else:
+            url = qtimg_stock_us.format(i, freq, sdate, edate, days, fq)
     else:
         raise ValueError(f'target market not supported: {i}')
     a = hget(url)
     #a = json.loads(a.text.replace('kline_dayqfq=', ''))['data'][i]
+    if i[:2] == 'us' and freq in ('min', '1min', 'minute'):
+        a = json.loads(a.text.split('=')[1])['data'][i]
+        nm = a['qt']['usAMZN.OQ'][1]
+        b = pd.DataFrame([i.split() for i in a['data']['data']],
+        columns=['minute','price','volume']).set_index(['minute']).astype(str)
+        return i, nm, b
     a = json.loads(a.text)['data'][i]
     name = ''
     try:
@@ -249,7 +260,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
         if 'qt' in a:
             name = a['qt'][i][1]
     except Exception as e:
-        logger.warning('error fetching {}, err: {}'.format(i, e))
+        raise ValueError('error fetching {}, err: {}'.format(i, e))
     return i, name, b
 
 
@@ -288,14 +299,13 @@ def get_tick(tgts=[]):
 
     a = hget(sina_tick + ','.join(tgts))
     if not a:
-        logger.warning('hget failed {}'.format(tgts))
-        return []
+        raise ValueError('hget failed {}'.format(tgts))
 
     try:
         dat = [i.split('"')[1].split(',') for i in a.text.split(';\n') if ',' in i]
         dat_trim = [{k:i[j] for j,k in enumerate(head_row) if k!='_'} for i in dat]
     except Exception as e:
-        logger.warming('data not complete, check tgt be code str or list without'+
+        raise ValueError('data not complete, check tgt be code str or list without'+
             ' prefix, your given: {}'.format(tgts))
     return dat_trim
 
@@ -313,8 +323,7 @@ def get_stock_concepts(i) -> []:
         concepts = json.loads(hget(url).text)[
             'hxtc'][0]['ydnr'].split()
     except Exception as e:
-        logger.error(str(e))
-        concepts = ['']
+        raise ValueError(f'error fetching concepts of {i}, err: {e}')
     #concepts = [i for i in concepts if i not in drop_cons]
     #concepts = [i for i in concepts if i[-2:] not in drop_tails]
     #concepts = [i for i in concepts if '股' not in i]
@@ -460,6 +469,7 @@ def get_hk_stocks_hsi():
 
 if __name__ == "__main__":
     # print(get_cn_stock_list())
-    # print(get_price('fuBTC'))
-    print(get_price('sz000001', sdate='20240101', edate='20250101'))
+    # print(get_price('fuBTC',sdate='20250101'))
+    # print(get_price('sz000001', sdate='20240101', edate='20250101'))
+    print(get_price('usAMZN.OQ', sdate='20250101', edate='20250101', freq='min'))
 
