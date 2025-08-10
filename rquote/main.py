@@ -238,7 +238,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
     #a = json.loads(a.text.replace('kline_dayqfq=', ''))['data'][i]
     if i[:2] == 'us' and freq in ('min', '1min', 'minute'):
         a = json.loads(a.text.split('=')[1])['data'][i]
-        nm = a['qt']['usAMZN.OQ'][1]
+        nm = a['qt'][i][1]
         b = pd.DataFrame([i.split() for i in a['data']['data']],
         columns=['minute','price','volume']).set_index(['minute']).astype(str)
         return i, nm, b
