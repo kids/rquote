@@ -218,6 +218,8 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                 d = json.loads(hget(url).text)['result']['data'].split('|')
                 d = pd.DataFrame([i.split(',') for i in d], 
                                  columns=['date', 'open', 'high', 'low', 'close', 'vol', 'amount'])
+                for col in ['open','high','low','close','vol','amount']:
+                    d[col] = pd.to_numeric(d[col], errors='coerce')
                 return i, 'BTC', d
             else:
                 ix = i[2:]
@@ -227,6 +229,8 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                     # d = pd.DataFrame(json.loads(rtext.split(i[2:])[1][2:-2]))
                     d = pd.DataFrame(load_js_var_json(url))
                     d.columns = ['dtime', 'close', 'avg', 'vol', 'hold','last_close','cur_date']
+                    for col in ['close','avg','vol','hold']:
+                        d[col] = pd.to_numeric(d[col], errors='coerce')
                     d = d.set_index(['dtime'])
                     return i[2:], i[2:], d
                 else:
@@ -234,6 +238,8 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                     #         ix, ix)).text.split('(')[1][:-2]))
                     d = pd.DataFrame(load_js_var_json(sina_future_d.format(ix, ix)))
                     d.columns = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
+                    for col in ['open','high','low','close','vol','p','s']:
+                        d[col] = pd.to_numeric(d[col], errors='coerce')
             d = d.set_index(['date']).astype(float)
             # d.index = pd.DatetimeIndex(d.index)
             return i, ix, d
@@ -260,7 +266,9 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
         a = json.loads(a.text.split('=')[1])['data'][i]
         nm = a['qt'][i][1]
         b = pd.DataFrame([i.split() for i in a['data']['data']],
-        columns=['minute','price','volume']).set_index(['minute']).astype(str)
+                columns=['minute','price','volume']).set_index(['minute'])
+        for col in ['price','volume']:
+            b[col] = pd.to_numeric(b[col], errors='coerce')
         return i, nm, b
     a = json.loads(a.text)['data'][i]
     name = ''
@@ -271,12 +279,10 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                 tk = tkt
                 break
         b = pd.DataFrame([j[:6] for j in a[tk]],
-                         columns=['date',
-                                  'open',
-                                  'close',
-                                  'high',
-                                  'low',
-                                  'vol']).set_index(['date']).astype(float)
+                         columns=['date','open','close','high','low','vol']
+                         ).set_index(['date'])
+        for col in ['open','high','low','close','vol']:
+            b[col] = pd.to_numeric(b[col], errors='coerce')
         if 'qt' in a:
             name = a['qt'][i][1]
     except Exception as e:
