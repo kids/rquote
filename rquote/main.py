@@ -137,6 +137,13 @@ def _check_date_format(date_str):
     return date_str
 
 
+def load_js_var_json(url):
+    a = hget(url)
+    if a:
+        a = json.loads(a.text.split('(')[1].split(')')[0])
+    return a
+
+
 def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
               dd=None) -> (str, str, pd.DataFrame):
     '''
@@ -170,6 +177,8 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
             '_var=min_data_{}&code={}'
     sina_future_d = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/' + \
             'var%20t1nf_{}=/InnerFuturesNewService.getDailyKLine?symbol={}'
+    sina_future_min = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/' + \
+            'var%20t1nf_{}=/InnerFuturesNewService.getMinLine?symbol={}'
     sina_btc = 'https://quotes.sina.cn/fx/api/openapi.php/BtcService.getDayKLine?' + \
         'symbol=btcbtcusd'
 
@@ -211,9 +220,20 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                                  columns=['date', 'open', 'high', 'low', 'close', 'vol', 'amount'])
                 return i, 'BTC', d
             else:
-                d = pd.DataFrame(json.loads(hget(sina_future_d.format(
-                        ix, ix)).text.split('(')[1][:-2]))
-                d.columns = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
+                ix = i[2:]
+                if freq in ('min', '1min', 'minute'):
+                    url = sina_future_min.format(ix, ix)
+                    # rtext = hget(url).text
+                    # d = pd.DataFrame(json.loads(rtext.split(i[2:])[1][2:-2]))
+                    d = pd.DataFrame(load_js_var_json(url))
+                    d.columns = ['dtime', 'close', 'avg', 'vol', 'hold','last_close','cur_date']
+                    d = d.set_index(['dtime'])
+                    return i[2:], i[2:], d
+                else:
+                    # d = pd.DataFrame(json.loads(hget(sina_future_d.format(
+                    #         ix, ix)).text.split('(')[1][:-2]))
+                    d = pd.DataFrame(load_js_var_json(sina_future_d.format(ix, ix)))
+                    d.columns = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
             d = d.set_index(['date']).astype(float)
             # d.index = pd.DatetimeIndex(d.index)
             return i, ix, d
@@ -470,6 +490,8 @@ def get_hk_stocks_hsi():
 if __name__ == "__main__":
     # print(get_cn_stock_list())
     # print(get_price('fuBTC',sdate='20250101'))
+    # print(get_price('fuM2601',sdate='20250101', freq='min'))
+    # print(get_price('fuM2601',sdate='2025-01-01'))
     # print(get_price('sz000001', sdate='20240101', edate='20250101'))
     print(get_price('usAMZN.OQ', sdate='20250101', edate='20250101', freq='min'))
 
