@@ -220,6 +220,7 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
                                  columns=['date', 'open', 'high', 'low', 'close', 'vol', 'amount'])
                 for col in ['open','high','low','close','vol','amount']:
                     d[col] = pd.to_numeric(d[col], errors='coerce')
+                d = d.set_index(['date']).astype(float)
                 return i, 'BTC', d
             else:
                 ix = i[2:]
