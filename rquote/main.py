@@ -9,37 +9,8 @@ from .utils import WebUtils, hget, logger
 
 
 
+
 def get_cn_stock_list(money_min=2e8):
-    ret = []
-    try:
-        ret = get_cn_stock_list_qq(money_min)
-    except Exception as e:
-        ret = get_cn_stock_list_eastmoney(money_min)
-    return ret
-
-def get_cn_stock_list_eastmoney(money_min=2e8):
-    '''
-    Return sorted stock list ordered by latest amount of money, cut at `money_min`
-    item in returned list are [code, name, change, amount, mktcap]
-    '''
-    a = hget(
-        base64.b64decode('aHR0cDovLzM4LnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2Ns'+
-            'aXN0L2dldD9jYj1qUXVlcnkxMTI0MDk0NTg3NjE4NDQzNzQ4MDFfMTYyNzI4ODQ4O'+
-            'Tk2MSZwbj0xJnB6PTEwMDAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2'+
-            'Y5YzI3ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1tOjArdDo2LG0'+
-            '6MCt0OjgwLG06MSt0OjIsbToxK3Q6MjMmZmllbGRzPWYxMixmMTQsZjMsZjYsZjIxJl89'
-            ).decode() + str(int(time.time()*1e3))
-    )
-    if a:
-        a = json.loads(a.text.split(
-            'jQuery112409458761844374801_1627288489961(')[1][:-2])
-    a = [ ['sh'+i['f12'] if i['f12'][0]=='6' else 'sz'+i['f12'],
-         i['f14'], i['f3'], i['f6'], i['f21']] for i in a['data']['diff']
-        if i['f6']!='-' and float(i['f6']) > money_min]
-    #cands=[(i.code,i.name) for i in a[['code','name']].itertuples()]
-    return a
-
-def get_cn_stock_list_qq(money_min=2e8):
     offset = 0
     count = 200 # max, or error
     df = []
@@ -248,6 +219,64 @@ def get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq',
             logger.warning('error get price {}, err {}'.format(i[2:-4], e))
             return i, 'None', pd.DataFrame([])
 
+    if i[:2] == 'pt':
+        try:
+            # URL format: https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?_var=kline_dayqfq&param=pt01801125,day,,,320,qfq
+            url = f'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?_var=kline_dayqfq&param={i},{freq},{sdate},{edate},{days},{fq}'
+            a = hget(url)
+            if not a:
+                logger.warning('{} hget failed: {}'.format(i, a))
+                return i, 'None', pd.DataFrame([])
+            
+            # Parse JavaScript variable assignment: kline_dayqfq={...}
+            response_text = a.text
+            # Extract JSON part after the variable name
+            json_start = response_text.find('{')
+            if json_start == -1:
+                logger.warning('{} invalid response format: {}'.format(i, response_text[:100]))
+                return i, 'None', pd.DataFrame([])
+            
+            data = json.loads(response_text[json_start:])
+            if data.get('code') != 0:
+                logger.warning('{} API returned error: {}'.format(i, data.get('msg', 'Unknown error')))
+                return i, 'None', pd.DataFrame([])
+            
+            # Extract data for this symbol
+            symbol_data = data.get('data', {}).get(i, {})
+            if not symbol_data:
+                logger.warning('{} data empty in response'.format(i))
+                return i, 'None', pd.DataFrame([])
+            
+            # Find the appropriate time key (day, week, month, etc.)
+            name = ''
+            tk = None
+            for tkt in ['day', 'qfqday', 'hfqday', 'week', 'qfqweek', 'hfqweek',
+                        'month', 'qfqmonth', 'hfqmonth']:
+                if tkt in symbol_data:
+                    tk = tkt
+                    break
+            
+            if not tk:
+                logger.warning('{} no time key found in data'.format(i))
+                return i, 'None', pd.DataFrame([])
+            
+            # Extract name from qt if available
+            if 'qt' in symbol_data and i in symbol_data['qt']:
+                name = symbol_data['qt'][i][1] if len(symbol_data['qt'][i]) > 1 else ''
+            
+            # Parse kline data: each entry is [date, open, close, high, low, vol, {}, ...]
+            kline_data = symbol_data[tk]
+            b = pd.DataFrame([j[:6] for j in kline_data],
+                             columns=['date', 'open', 'close', 'high', 'low', 'vol']
+                             ).set_index(['date'])
+            for col in ['open', 'high', 'low', 'close', 'vol']:
+                b[col] = pd.to_numeric(b[col], errors='coerce')
+            
+            return i, name, b
+        except Exception as e:
+            logger.warning('error fetching {}, err: {}'.format(i, e))
+            return i, 'None', pd.DataFrame([])
+
     if i[0] in ['0', '1', '3', '5', '6']:
         i = 'sh'+i if i[0] in ['5', '6'] else 'sz'+i
     if i[:2] in ['sh', 'sz']:
@@ -338,48 +367,25 @@ def get_tick(tgts=[]):
 
 
 def get_stock_concepts(i) -> []:
-    '''
-    Return concept id(start with `BK`) list of a stock, from eastmoney
-    '''
-    f10url = base64.b64decode('aHR0cDovL2YxMC5lYXN0bW9uZXkuY29tLy9Db3JlQ29uY2V' +
-                              'wdGlvbi9Db3JlQ29uY2VwdGlvbkFqYXg/Y29kZT0=').decode()
-    #drop_cons = ['融资融券', '创业板综', '深股通', '沪股通', '深成500', '长江三角']
-    #drop_tails = ['板块', '概念', '0_', '成份', '重仓']
-    url = f10url + i
-    try:
-        concepts = json.loads(hget(url).text)[
-            'hxtc'][0]['ydnr'].split()
-    except Exception as e:
-        raise ValueError(f'error fetching concepts of {i}, err: {e}')
-    #concepts = [i for i in concepts if i not in drop_cons]
-    #concepts = [i for i in concepts if i[-2:] not in drop_tails]
-    #concepts = [i for i in concepts if '股' not in i]
-    return concepts
+    url = f'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/stockinfo/plateNew?code={i}&app=wzq&zdf=1'
+    a = hget(url)
+    if not a:
+        raise HTTPError('Failed to fetch concepts from QQ Finance')
+    data = json.loads(a.text)
+    if data.get('code') != 0:
+        raise HTTPError('API returned error: {}'.format(data.get('msg', 'Unknown error')))
+    return data.get('data', {}).get('concept', [])
 
 
-def get_concept_stocks(bkid, dc=None):
-    '''
-    Return stocks of input bkid, e.g. BK0420, BK0900
-    dc : dictionary of concepts, local cache with get/put
-    '''
-    if dc is not None:
-        a = dc.get(bkid)
-        if a:
-            return a
-    bkid = bkid if isinstance(bkid, str) else 'BK' + str(bkid).zfill(4)
-    a = hget(
-        base64.b64decode('aHR0cDovL3B1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2NsaXN0' +
-                         'L2dldD9jYj1qUXVlcnkxMTIzMDQwNTcwNTM4NTY5NDcwMTA1XzE2MTgwNDc5OTA2O' +
-                         'TAmZmlkPWY2MiZwbz0xJnB6PTUwMCZwbj0xJm5wPTEmZmx0dD0yJmludnQ9MiZmcz' +
-                         '1iJTNB').decode() +
-        bkid +
-        '&fields=f3%2Cf6%2Cf12%2Cf14%2Cf21').text
-    a = json.loads(
-        a.split('jQuery1123040570538569470105_1618047990690(')[1][:-2])['data']['diff']
-    logger.debug('get fresh conc {}'.format(bkid))
-    a = [ ['sh'+i['f12'] if i['f12'][0]=='6' else 'sz'+i['f12'],
-         i['f14'], i['f3'], i['f6'], i['f21']] for i in a]
-    return a
+def get_stock_industry(i) -> []:
+    url = f'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/stockinfo/plateNew?code={i}&app=wzq&zdf=1'
+    a = hget(url)
+    if not a:
+        raise HTTPError('Failed to fetch industry from QQ Finance')
+    data = json.loads(a.text)
+    if data.get('code') != 0:
+        raise HTTPError('API returned error: {}'.format(data.get('msg', 'Unknown error')))
+    return data.get('data', {}).get('plate', [])
 
 
 def _east_list_fmt(burl, api_name):
@@ -404,94 +410,56 @@ def get_all_industries():
     Return sorted industry item list ordered by latest amount of money,
     item in returned list are [code, name, change, amount, price]
     '''
-    a = _east_list_fmt('aHR0cHM6Ly84Ny5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
-        'zdC9nZXQ/Y2I9alF1ZXJ5MTEyNDAzNzExNzU2NTU3MTk3MTM0NV8xNjI3MDQ3MTg4NTk5'+
-        'JnBuPTEmcHo9MTAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZmN'+
-        'zQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mMyZmcz1tOjkwK3Q6MitmOiE1MCZmaWVsZH'+
-        'M9ZjMsZjYsZjEyLGYxNCxmMjAsZjEwNCxmMTA1Jl89',
-        'jQuery1124037117565571971345_1627047188599')
-    logger.debug('get industries {}'.format(len(a)))
-    return a
+    try:
+        url = 'https://proxy.finance.qq.com/cgi/cgi-bin/rank/pt/getRank?board_type=hy2&sort_type=price&direct=down&offset=0&count=200'
+        a = hget(url)
+        if not a:
+            raise HTTPError('Failed to fetch industries from QQ Finance')
+        data = json.loads(a.text)
+        if data.get('code') != 0:
+            logger.warning('API returned error: {}'.format(data.get('msg', 'Unknown error')))
+            return []
+        
+        rank_list = data.get('data', {}).get('rank_list', [])
+        # Format: [code, name, change, amount, price]
+        # change: zdf (涨跌幅), amount: zllr (主力净流入), price: zxj (最新价)
+        industries = [
+            [item['code'], item['name'], item.get('zdf', '0'), 
+             item.get('zllr', '0'), item.get('zxj', '0')]
+            for item in rank_list
+        ]
+        logger.debug('get industries {}'.format(len(industries)))
+    except Exception as e:
+        raise HTTPError.warning('Error parsing industries data: {}'.format(e))
+    try:
+        url = 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodes'
+        sina_industries = hget(url)
+        if not sina_industries:
+            raise HTTPError('Failed to fetch industries from Sina Finance')
+        data = json.loads(sina_industries.text)
+        sina_industries = data[1][0][1]
+        sina_sw2 = sina_industries[3][1]
+        sina_sw2_dict = {i[0]:i[2] for i in sina_sw2}
+    except Exception as e:
+        print(f'Error parsing sina industries data: {e}, get {data}')
+    # 利用sina_sw2_dict给industries添加sina_sw2_id
+    for industry in industries:
+        industry.append(sina_sw2_dict.get(industry[1], ''))
+    return industries
 
 
-def get_all_concepts():
-    '''
-    Return sorted concept item list ordered by latest amount of money,
-    item in returned list are [code, name, change, amount, price]
-    '''
-    a = _east_list_fmt('aHR0cHM6Ly8yMi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbGl'+
-        'zdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3MzI5ODQxOTMwNzY4OTc5XzE2MjcxMDk0NjA2MzMm'+
-        'cG49MSZwej00MDAmcG89MSZucD0xJnV0PWJkMWQ5ZGRiMDQwODk3MDBjZjljMjdmNmY3N'+
-        'DI2MjgxJmZsdHQ9MiZpbnZ0PTImZmlkPWYzJmZzPW06OTArdDozK2Y6ITUwJmZpZWxkcz'+
-        '1mMyxmNixmMTIsZjE0LGYyMCxmMTA0LGYxMDUmXz0='
-        ,'jQuery112407329841930768979_1627109460633')
-    logger.debug('get concepts {}'.format(len(a)))
-    return a
-
-
-def get_bk_stocks(bkid):
-    '''
-    Return stock item list of given bk id,
-    item in returned list are [code, name, change, amount, price]
-    '''
-    url = base64.b64decode('aHR0cDovLzgyLnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2'+
-        'NsaXN0L2dldD9jYj1qUXVlcnkxMTI0MDQ4Njk5NjMwMDk1MTM3NzE0XzE2Mjc0Nzc0OTU'+
-        'wNjQmcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
-        'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+ \
-        bkid + '+f:!50&fields=f3,f6,f12,f14,f20&_='
-    a = _east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
-        'jQuery1124048699630095137714_1627477495064')
-    logger.debug('get bk stocks {}'.format(len(a)))
-    return a
-
-
-def get_industry_stocks(bkid):
+def get_industry_stocks(node):
     '''
     Return sorted industry item list ordered by latest amount of money,
     item in returned list are [code, name, change, amount, price]
     '''
-    url = base64.b64decode('aHR0cHM6Ly82Mi5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC'+
-        '9jbGlzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA4Mzc4MjAwMDc0NDQ0MzA5XzE2Mjc4MjQ2MDM'+
-        '1NjImcG49MSZwej0yMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3'+
-        'ZjZmNzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOg==').decode()+ \
-        bkid + '+f:!50&fields=f3,f6,f12,f14,f20&_='
-    a = _east_list_fmt(base64.b64encode(bytes(url, encoding='utf-8')),
-        'jQuery112408378200074444309_1627824603562')
-    logger.debug('get industry stocks {}'.format(len(a)))
-    return a
-
-
-def get_hk_stocks_ggt():
-    '''
-    Return sorted stock item list in GangGuTong, ordered by amount of money,
-    item in returned list are [code, name, change, amount, price]
-    '''
-    a = _east_list_fmt('aHR0cHM6Ly8yLnB1c2gyLmVhc3Rtb25leS5jb20vYXBpL3F0L2NsaX'+
-        'N0L2dldD9jYj1qUXVlcnkxMTI0MDI0MzYyMzA4OTA2NjE1MDgyXzE2MjgyNTg5MzEyMjQ'+
-        'mcG49MSZwej0xMDAwJnBvPTAmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZm'+
-        'NzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOkRMTUswMTQ2LGI6RExNSzAxN'+
-        'DQmZmllbGRzPWYzLGY2LGYxMixmMTQsZjIwJl89',
-        'jQuery1124024362308906615082_1628258931224')
-    a = [ ['hk'+i[0], i[1], i[2], i[3], i[4]] for i in a]
-    logger.debug('get hk stocks GangGuTong {}'.format(len(a)))
-    return a
-
-
-def get_hk_stocks_hsi():
-    '''
-    Return sorted stock item list in HSI, ordered by amount of money,
-    item in returned list are [code, name, change, amount, price]
-    '''
-    a = _east_list_fmt('aHR0cHM6Ly81Ni5wdXNoMi5lYXN0bW9uZXkuY29tL2FwaS9xdC9jbG'+
-        'lzdC9nZXQ/Y2I9alF1ZXJ5MTEyNDA3ODg4ODY4NDU5NDc5NzkyXzE2MjgyNTk1NjQ2NzE'+
-        'mcG49MSZwej0xMDAwJnBvPTEmbnA9MSZ1dD1iZDFkOWRkYjA0MDg5NzAwY2Y5YzI3ZjZm'+
-        'NzQyNjI4MSZmbHR0PTImaW52dD0yJmZpZD1mNiZmcz1iOkRMTUswMTQxJmZpZWxkcz1mM'+
-        'yxmNixmMTIsZjE0LGYyMCZfPQ==',
-        'jQuery112407888868459479792_1628259564671')
-    a = [ ['hk'+i[0], i[1], i[2], i[3], i[4]] for i in a]
-    logger.debug('get hk stocks HSI {}'.format(len(a)))
-    return a
-
+    url = f'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/'+\
+    f'Market_Center.getHQNodeData?page=1&num=40&sort=symbol&asc=1&node={node}&symbol=&_s_r_a=init'
+    a = hget(url)
+    if not a:
+        raise HTTPError('Failed to fetch industry stocks from Sina Finance')
+    data = json.loads(a.text)
+    return data
 
 
 if __name__ == "__main__":
@@ -499,6 +467,11 @@ if __name__ == "__main__":
     # print(get_price('fuBTC',sdate='20250101'))
     # print(get_price('fuM2601',sdate='20250101', freq='min'))
     # print(get_price('fuM2601',sdate='2025-01-01'))
+    # print(get_price('pt02B20001'))
     # print(get_price('sz000001', sdate='20240101', edate='20250101'))
-    print(get_price('usAMZN.OQ', sdate='20250101', edate='20250101', freq='min'))
+    # print(get_price('usAMZN.OQ', sdate='20250101', edate='20250101', freq='min'))
+    print(get_all_industries())
+    # print(get_stock_concepts('sz000858'))
+    # print(get_stock_industry('sz000858'))
+    # print(get_industry_stocks('sw2_480200'))
 
