@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+rquote/__init__.py
+rquote/main.py
+rquote/plots.py
+rquote/utils.py
+rquote.egg-info/PKG-INFO
+rquote.egg-info/SOURCES.txt
+rquote.egg-info/dependency_links.txt
+rquote.egg-info/requires.txt
+rquote.egg-info/top_level.txt

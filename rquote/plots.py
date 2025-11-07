@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from .main import get_price
+from .api import get_price
 
 
 class PlotUtils:
