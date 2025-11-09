@@ -5,7 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import rquote
 
 def test_get_price():
-    a = rquote.get_price('fuBTC')
+    a = rquote.get_price('sz000001', edate='20240110')
     print(a)
 
 def test_get_cn_stock_list():
