@@ -57,6 +57,9 @@ class SinaDataSource(DataSource):
             return {'data': data}
         except json.JSONDecodeError as e:
             raise ParseError(f"Parse error: {e}")
+        finally:
+            # 确保响应对象被关闭，释放SSL连接
+            response.close()
     
     def fetch_tick(self, symbols: List[str]) -> Dict[str, Any]:
         """
@@ -89,4 +92,7 @@ class SinaDataSource(DataSource):
             return {'data': result}
         except Exception as e:
             raise ParseError(f"Parse tick error: {e}")
+        finally:
+            # 确保响应对象被关闭，释放SSL连接
+            response.close()
 

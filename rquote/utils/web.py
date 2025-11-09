@@ -91,6 +91,7 @@ class hget:
     """
     def __init__(self, url, *args, **kwargs):
         self.url = url
+        r = None
         try:
             r = httpx.get(
                 self.url, follow_redirects=True, headers=WebUtils.headers(),
@@ -101,4 +102,8 @@ class hget:
             logger.error(f'fetch {self.url} err: {e}')
             self.text = ''
             self.content = b''
+        finally:
+            # 确保响应对象被关闭，释放SSL连接
+            if r is not None:
+                r.close()
 

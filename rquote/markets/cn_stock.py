@@ -159,7 +159,7 @@ class CNStockMarket(Market):
         from ..utils import hget
         import json
         
-        url = f'http://web.ifzq.gtimg.cn/appstock/app/newfqkline/get?param={symbol},{freq},{sdate},{edate},{days},{fq}'
+        url = f'https://web.ifzq.gtimg.cn/appstock/app/newfqkline/get?param={symbol},{freq},{sdate},{edate},{days},{fq}'
         response = hget(url)
         if not response:
             raise DataSourceError(f'Failed to fetch data for {symbol}')

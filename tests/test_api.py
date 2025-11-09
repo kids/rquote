@@ -4,7 +4,7 @@ API测试（集成测试）
 """
 import unittest
 from rquote import get_price, get_cn_stock_list, get_all_industries
-from rquote.exceptions import SymbolError, DataSourceError
+from rquote.exceptions import SymbolError, DataSourceError, NetworkError
 
 
 class TestAPI(unittest.TestCase):

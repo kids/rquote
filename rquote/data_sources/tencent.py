@@ -12,9 +12,9 @@ from ..exceptions import DataSourceError, ParseError
 class TencentDataSource(DataSource):
     """腾讯数据源"""
     
-    BASE_URL = "http://web.ifzq.gtimg.cn/appstock/app/newfqkline/get"
-    BASE_URL_HK = "http://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get"
-    BASE_URL_US = "http://web.ifzq.gtimg.cn/appstock/app/usfqkline/get"
+    BASE_URL = "https://web.ifzq.gtimg.cn/appstock/app/newfqkline/get"
+    BASE_URL_HK = "https://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get"
+    BASE_URL_US = "https://web.ifzq.gtimg.cn/appstock/app/usfqkline/get"
     
     def __init__(self, http_client: HTTPClient = None):
         """
@@ -56,7 +56,7 @@ class TencentDataSource(DataSource):
         if not response:
             raise DataSourceError(f"Failed to fetch from Tencent: {symbol}")
         
-        # 解析响应
+        # 解析响应，确保响应对象被正确关闭
         try:
             text = response.text
             # 处理不同的响应格式
@@ -83,6 +83,9 @@ class TencentDataSource(DataSource):
             return data
         except json.JSONDecodeError as e:
             raise ParseError(f"Parse error: {e}")
+        finally:
+            # 确保响应对象被关闭，释放SSL连接
+            response.close()
     
     def fetch_tick(self, symbols: List[str]) -> Dict[str, Any]:
         """获取实时行情（暂未实现）"""
