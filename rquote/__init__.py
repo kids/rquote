@@ -34,7 +34,7 @@ from . import exceptions
 from .cache import MemoryCache, Cache
 from .utils.http import HTTPClient
 
-__version__ = '0.3.5'
+__version__ = '0.3.6'
 
 __all__ = [
     # API函数
