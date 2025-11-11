@@ -18,7 +18,7 @@ def get_stock_concepts(i: str) -> List[str]:
     Returns:
         概念代码列表
     """
-    i = 'sh' + i if i[0] in ['6', '0'] else 'sz' + i
+    i = {'6': 'sh', '0': 'sz'}.get(i[0], '') + i if i[0] in ['6', '0'] else i
     url = f'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/stockinfo/plateNew?code={i}&app=wzq&zdf=1'
     a = hget(url)
     if not a:
@@ -39,7 +39,7 @@ def get_stock_industry(i: str) -> List[str]:
     Returns:
         行业代码列表
     """
-    i = 'sh' + i if i[0] in ['6', '0'] else 'sz' + i
+    i = {'6': 'sh', '0': 'sz'}.get(i[0], '') + i if i[0] in ['6', '0'] else i
     url = f'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/stockinfo/plateNew?code={i}&app=wzq&zdf=1'
     a = hget(url)
     if not a:
