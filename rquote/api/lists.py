@@ -160,7 +160,7 @@ def get_industry_stocks(node):
     获取指定行业板块的股票列表
     
     Args:
-        node: 行业节点代码
+        node: 行业节点名称
     
     Returns:
         股票列表
