@@ -7,6 +7,9 @@ Copyright (c) 2021 Roi ZHAO
 
 '''
 
+import re
+from pathlib import Path
+
 # API函数
 from .api import (
     get_price,
@@ -34,7 +37,38 @@ from . import exceptions
 from .cache import MemoryCache, Cache
 from .utils.http import HTTPClient
 
-__version__ = '0.3.6'
+
+def _get_version():
+    """从 pyproject.toml 读取版本号"""
+    # 优先尝试从已安装的包中读取版本
+    try:
+        from importlib import metadata
+        return metadata.version("rquote")
+    except Exception:
+        pass
+    
+    # 如果包未安装，从 pyproject.toml 读取
+    try:
+        # 获取项目根目录（__init__.py 的父目录的父目录）
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parent.parent
+        pyproject_path = project_root / "pyproject.toml"
+        
+        if pyproject_path.exists():
+            with open(pyproject_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # 使用正则表达式匹配 version = "x.x.x"
+                match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
+                if match:
+                    return match.group(1)
+    except Exception:
+        pass
+    
+    # 如果都失败了，返回默认版本
+    return "0.0.0"
+
+
+__version__ = _get_version()
 
 __all__ = [
     # API函数
