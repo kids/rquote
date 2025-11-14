@@ -20,6 +20,7 @@ def get_price(i: str, sdate: str = '', edate: str = '', freq: str = 'day',
         i: 股票代码
         sdate: 开始日期
         edate: 结束日期
+        freq: 频率，默认'day' (日线)，可选：'week', 'month', 'min'
         dd: data dictionary或Cache对象，任何有get/put方法的本地缓存
         days: 获取天数，覆盖sdate
         fq: 复权方式，qfq为前复权
@@ -71,3 +72,8 @@ def get_price_longer(i: str, l: int = 2, dd=None) -> Tuple[str, str, pd.DataFram
         d1 = d0
     return i, name, a
 
+
+if __name__ == '__main__':
+    i = 'usTSLA.N'
+    a = get_price(i, freq='min')
+    print(a)

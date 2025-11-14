@@ -71,7 +71,7 @@ sid, name, df = get_price('sh000001', dd=cache_dict)
 - `i`: 股票代码，使用新浪/腾讯的id形式
 - `sdate`: 开始日期 (可选，格式：YYYY-MM-DD)
 - `edate`: 结束日期 (可选，格式：YYYY-MM-DD)
-- `freq`: 频率，默认'day' (日线)，可选：'week', 'month', 'min'
+- `freq`: 频率，默认'day' (日线)，可选：(港A)'week', 'month', (美股)'min'
 - `days`: 获取天数，默认320天
 - `fq`: 复权方式，默认'qfq' (前复权)，可选：'hfq' (后复权)
 - `dd`: 本地缓存字典 (可选，已废弃，建议使用MemoryCache)
