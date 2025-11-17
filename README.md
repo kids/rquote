@@ -48,16 +48,66 @@ sid, name, df = get_price('sz000001', sdate='2024-01-01', edate='2024-02-01')
 
 ### 使用缓存
 
+#### 内存缓存（MemoryCache）
+
 ```python
 from rquote import get_price, MemoryCache
 
 # 创建缓存实例
 cache = MemoryCache(ttl=3600)  # 缓存1小时
 
-# 使用缓存（通过dd参数，向后兼容）
-cache_dict = {}
-sid, name, df = get_price('sh000001', dd=cache_dict)
+# 使用缓存（通过dd参数传递MemoryCache实例）
+sid, name, df = get_price('sh000001', dd=cache)
+
+# 注意：MemoryCache 是内存缓存，数据仅在当前进程运行期间有效
+# 脚本运行结束后，缓存数据会丢失
 ```
+
+**缓存生命周期说明：**
+- `MemoryCache` 是纯内存缓存，数据存储在进程内存中
+- 缓存数据仅在当前脚本运行期间有效
+- 脚本运行结束后，所有缓存数据会丢失
+
+#### 持久化缓存（PersistentCache）
+
+持久化缓存支持跨进程/跨运行的缓存持久化，数据会保存到本地文件。
+
+**安装可选依赖：**
+```bash
+pip install rquote[persistent]
+# 或
+uv pip install "rquote[persistent]"
+```
+
+**使用持久化缓存：**
+```python
+from rquote import get_price, PersistentCache
+
+# 创建持久化缓存实例
+# 默认使用 duckdb（如果已安装），否则使用 pickle 文件
+cache = PersistentCache(ttl=86400)  # 缓存24小时，默认路径：~/.rquote/cache.db
+
+# 或指定自定义路径
+cache = PersistentCache(db_path='./my_cache.db', use_duckdb=True)
+
+# 使用缓存
+sid, name, df = get_price('sh000001', dd=cache)
+
+# 持久化缓存支持智能扩展：
+# - 当请求的结束日期不在缓存中时，会自动从缓存的最新日期向前扩展
+# - 当请求的开始日期不在缓存中时，会自动从缓存的最早日期向后扩展
+# - 数据会自动合并，避免重复请求
+
+# 关闭缓存（可选，程序退出时会自动保存）
+cache.close()
+```
+
+**持久化缓存特性：**
+- ✅ 跨进程/跨运行持久化：数据保存在本地文件，下次运行仍可使用
+- ✅ 智能数据合并：相同股票的数据会自动合并，key 不包含日期范围
+- ✅ 智能扩展：当请求的日期范围超出缓存时，自动扩展并合并数据
+- ✅ 支持 TTL：可设置缓存过期时间
+- ✅ 可选 duckdb：如果安装了 duckdb，使用 duckdb 存储（性能更好），否则使用 pickle 文件
 
 ## 主要功能
 
