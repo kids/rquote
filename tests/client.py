@@ -5,7 +5,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import rquote
 
 def test_get_price():
-    a = rquote.get_price('sz000001', edate='20240110')
+    a = rquote.get_price('fuBTC', edate='20240110')
+    print(a)
+
+def test_get_tick():
+    a = rquote.get_price('usTSLA.OQ', freq='min')
     print(a)
 
 def test_get_cn_stock_list():
@@ -19,4 +23,5 @@ def test_get_hk_stocks_500():
 
 if __name__ == '__main__':
     # test_get_cn_stock_list()
-    test_get_price()
+    # test_get_price()
+    test_get_tick()

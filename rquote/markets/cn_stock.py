@@ -82,7 +82,10 @@ class CNStockMarket(Market):
             name = data['data']['name']
             df = pd.DataFrame([i.split(',') for i in data['data']['klines']], 
                              columns=['date', 'open', 'close', 'high', 'low', 'vol', 'money', 'p'])
-            df = df.set_index(['date']).astype(float)
+            df = df.set_index(['date'])
+            # 转换数值列
+            for col in ['open', 'close', 'high', 'low', 'vol', 'money', 'p']:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
             
             result = (symbol, name, df)
             self._put_cache(symbol, result)

@@ -35,7 +35,7 @@ class HKStockMarket(Market):
             )
             
             parser = KlineParser()
-            name, df = parser.parse_tencent_kline(raw_data, symbol)
+            name, df = parser.parse_tencent_kline(raw_data, symbol, fq=fq)
             
             result = (symbol, name, df)
             self._put_cache(cache_key, result)

@@ -11,7 +11,7 @@ class KlineParser:
     """K线数据解析器"""
     
     @staticmethod
-    def parse_tencent_kline(data: Dict[str, Any], symbol: str) -> Tuple[str, pd.DataFrame]:
+    def parse_tencent_kline(data: Dict[str, Any], symbol: str, fq: str = 'qfq') -> Tuple[str, pd.DataFrame]:
         """
         解析腾讯K线数据
         
@@ -27,9 +27,17 @@ class KlineParser:
             if not symbol_data:
                 raise ParseError(f"No data for symbol {symbol}")
             
-            # 查找时间键
-            time_keys = ['day', 'qfqday', 'hfqday', 'week', 'qfqweek', 'hfqweek',
-                        'month', 'qfqmonth', 'hfqmonth']
+            # 查找时间键，优先使用与fq参数匹配的键
+            # 根据fq参数确定优先级：qfq -> qfqday优先，hfq -> hfqday优先，否则day优先
+            if fq == 'qfq':
+                time_keys = ['qfqday', 'day', 'hfqday', 'qfqweek', 'week', 'hfqweek',
+                            'qfqmonth', 'month', 'hfqmonth']
+            elif fq == 'hfq':
+                time_keys = ['hfqday', 'day', 'qfqday', 'hfqweek', 'week', 'qfqweek',
+                            'hfqmonth', 'month', 'qfqmonth']
+            else:
+                time_keys = ['day', 'qfqday', 'hfqday', 'week', 'qfqweek', 'hfqweek',
+                            'month', 'qfqmonth', 'hfqmonth']
             tk = None
             for tkt in time_keys:
                 if tkt in symbol_data:
