@@ -25,18 +25,19 @@ class FutureMarket(Market):
         """获取期货价格数据"""
         symbol = self.normalize_symbol(symbol)
         
-        # 特殊处理BTC
+        # 特殊处理BTC（不使用缓存）
         if symbol[2:5].lower() == 'btc':
             if freq in ('min', '1min', 'minute'):
                 return self._get_btc_minute_price(symbol)
             else:
                 return self._get_btc_price(symbol)
         
-        cache_key = f"{symbol}:{sdate}:{edate}:{freq}:{days}"
-        cached = self._get_cached(cache_key)
-        if cached:
-            return cached
-        
+        # 使用基类的缓存逻辑
+        return super().get_price(symbol, sdate, edate, freq, days, fq)
+    
+    def _fetch_price_data(self, symbol: str, sdate: str = '', edate: str = '', 
+                          freq: str = 'day', days: int = 320, fq: str = 'qfq') -> Tuple[str, str, pd.DataFrame]:
+        """从数据源获取期货价格数据"""
         future_code = symbol[2:]  # 去掉'fu'前缀
         
         try:
@@ -44,9 +45,7 @@ class FutureMarket(Market):
             parser = KlineParser()
             df = parser.parse_sina_future_kline(raw_data, freq=freq)
             
-            result = (symbol, future_code, df)
-            self._put_cache(cache_key, result)
-            return result
+            return (symbol, future_code, df)
         except (DataSourceError, ParseError) as e:
             logger.warning(f'Failed to fetch {symbol} using new architecture, falling back: {e}')
             return self._get_price_fallback(symbol, future_code, freq)

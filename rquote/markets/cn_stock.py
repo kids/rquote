@@ -27,21 +27,20 @@ class CNStockMarket(Market):
         """获取A股价格数据"""
         symbol = self.normalize_symbol(symbol)
         
-        # 检查缓存
-        cache_key = f"{symbol}:{sdate}:{edate}:{freq}:{days}:{fq}"
-        cached = self._get_cached(cache_key)
-        if cached:
-            return cached
-        
-        # 特殊处理BK（板块）代码
+        # 特殊处理BK（板块）代码（不使用缓存）
         if symbol[:2] == 'BK':
             return self._get_bk_price(symbol)
         
-        # 特殊处理PT代码
+        # 特殊处理PT代码（不使用缓存）
         if symbol[:2] == 'pt':
             return self._get_pt_price(symbol, sdate, edate, freq, days, fq)
         
-        # 使用数据源获取数据
+        # 使用基类的缓存逻辑
+        return super().get_price(symbol, sdate, edate, freq, days, fq)
+    
+    def _fetch_price_data(self, symbol: str, sdate: str = '', edate: str = '', 
+                          freq: str = 'day', days: int = 320, fq: str = 'qfq') -> Tuple[str, str, pd.DataFrame]:
+        """从数据源获取A股价格数据"""
         try:
             raw_data = self.data_source.fetch_kline(
                 symbol, freq=freq, sdate=sdate, edate=edate, days=days, fq=fq
@@ -51,9 +50,7 @@ class CNStockMarket(Market):
             parser = KlineParser()
             name, df = parser.parse_tencent_kline(raw_data, symbol)
             
-            result = (symbol, name, df)
-            self._put_cache(cache_key, result)
-            return result
+            return (symbol, name, df)
         except (DataSourceError, ParseError) as e:
             logger.warning(f'Failed to fetch {symbol} using new architecture: {e}')
             # 降级到旧方法
