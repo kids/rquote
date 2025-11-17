@@ -4,10 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rquote"
-version = "0.3.9"
+version = "0.4.0"
 description = "Mostly day quotes of cn/hk/us/fund/future markets, side with quote list fetch"
 readme = "README.md"
-requires-python = ">=3.6.1"
+# requires-python = ">=3.6.1" # duckdb requires higher python version
+requires-python = ">=3.9.0"
 dependencies = [
     "build>=0.9.0",
     "httpx>=0.20.0",
@@ -15,3 +16,5 @@ dependencies = [
     "setuptools>=42",
     "twine>=3.8.0",
 ]
+[project.optional-dependencies]
+persistent = ["duckdb>=0.9.0"]
