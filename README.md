@@ -185,13 +185,13 @@ stocks = get_cn_stock_list(money_min=5e8)
 
 #### `get_hk_stocks_500()`
 
-获取港股前500只股票列表
+获取港股前500只股票列表(按当日成交额排序)
 
 ```python
 from rquote import get_hk_stocks_500
 
 stocks = get_hk_stocks_500()
-# 返回格式: [[code, name, price, turnover, ...], ...]
+# 返回格式: [[code, name, price, -, -, -, -, volume, turnover, ...], ...]
 ```
 
 #### `get_us_stocks(k=100)`
