@@ -232,7 +232,7 @@ class PersistentCache(Cache):
                     freq: str, fq: str) -> Optional[Tuple[str, str, pd.DataFrame]]:
         """从 duckdb 获取数据"""
         result = self.conn.execute("""
-            SELECT name, data, earliest_date, latest_date, expire_at
+            SELECT name, data, expire_at
             FROM cache_data
             WHERE cache_key = ?
         """, [base_key]).fetchone()
@@ -240,7 +240,7 @@ class PersistentCache(Cache):
         if not result:
             return None
         
-        name, data_blob, earliest_date, latest_date, expire_at = result
+        name, data_blob, expire_at = result
         
         # 检查过期
         if self.ttl and expire_at:
@@ -253,43 +253,43 @@ class PersistentCache(Cache):
         import pickle
         df = pickle.loads(data_blob)
         
-        # 获取缓存数据的日期范围
-        cached_earliest = self._parse_date(earliest_date)
-        cached_latest = self._parse_date(latest_date)
+        # 确保索引是 DatetimeIndex
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index)
+            except (ValueError, TypeError):
+                return None
         
-        # 如果请求的日期范围完全在缓存范围内，直接返回过滤后的数据
+        if df.empty:
+            return None
+        
+        # 直接从 DataFrame 索引获取实际的日期范围
+        cached_earliest = df.index.min()
+        cached_latest = df.index.max()
+        
+        # 解析请求的日期范围
         request_sdate = self._parse_date(sdate) if sdate else None
         request_edate = self._parse_date(edate) if edate else None
         
-        # 检查是否有重叠
-        if request_edate and cached_earliest and request_edate < cached_earliest:
+        # 检查是否有重叠：如果请求的日期范围与缓存数据有重叠，就返回过滤后的数据
+        # 注意：即使缓存中有部分数据，也应该返回（让上层决定是否需要扩展）
+        has_overlap = True
+        if request_edate and request_edate < cached_earliest:
             # 请求的结束日期早于缓存的最早日期，无重叠
-            return None
-        if request_sdate and cached_latest and request_sdate > cached_latest:
+            has_overlap = False
+        if request_sdate and request_sdate > cached_latest:
             # 请求的开始日期晚于缓存的最晚日期，无重叠
+            has_overlap = False
+        
+        if not has_overlap:
             return None
         
-        # 有重叠，返回缓存中可用的部分数据
-        # 计算实际可用的日期范围
-        actual_sdate = max(request_sdate, cached_earliest) if request_sdate and cached_earliest else (request_sdate or cached_earliest)
-        actual_edate = min(request_edate, cached_latest) if request_edate and cached_latest else (request_edate or cached_latest)
-        
-        # 过滤数据
-        filtered_df = self._filter_dataframe_by_date(
-            df, 
-            actual_sdate.strftime('%Y-%m-%d') if actual_sdate else None,
-            actual_edate.strftime('%Y-%m-%d') if actual_edate else None
-        )
+        # 按照请求的日期范围过滤数据（即使缓存中有更多数据，也只返回请求范围内的）
+        # 重要：必须按照 edate 截取，和从网络获取的行为一致
+        filtered_df = self._filter_dataframe_by_date(df, sdate, edate)
         
         if filtered_df.empty:
             return None
-        
-        # 确保索引是 DatetimeIndex
-        if not isinstance(filtered_df.index, pd.DatetimeIndex):
-            try:
-                filtered_df.index = pd.to_datetime(filtered_df.index)
-            except (ValueError, TypeError):
-                pass  # 如果转换失败，保持原样
         
         return (symbol, name, filtered_df)
     
@@ -311,46 +311,44 @@ class PersistentCache(Cache):
         
         df = cache_entry['data']
         name = cache_entry.get('name', '')
-        earliest_date = cache_entry.get('earliest_date')
-        latest_date = cache_entry.get('latest_date')
         
-        # 获取缓存数据的日期范围
-        cached_earliest = self._parse_date(earliest_date)
-        cached_latest = self._parse_date(latest_date)
+        # 确保索引是 DatetimeIndex
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index)
+            except (ValueError, TypeError):
+                return None
         
-        # 如果请求的日期范围完全在缓存范围内，直接返回过滤后的数据
+        if df.empty:
+            return None
+        
+        # 直接从 DataFrame 索引获取实际的日期范围
+        cached_earliest = df.index.min()
+        cached_latest = df.index.max()
+        
+        # 解析请求的日期范围
         request_sdate = self._parse_date(sdate) if sdate else None
         request_edate = self._parse_date(edate) if edate else None
         
-        # 检查是否有重叠
-        if request_edate and cached_earliest and request_edate < cached_earliest:
+        # 检查是否有重叠：如果请求的日期范围与缓存数据有重叠，就返回过滤后的数据
+        # 注意：即使缓存中有部分数据，也应该返回（让上层决定是否需要扩展）
+        has_overlap = True
+        if request_edate and request_edate < cached_earliest:
             # 请求的结束日期早于缓存的最早日期，无重叠
-            return None
-        if request_sdate and cached_latest and request_sdate > cached_latest:
+            has_overlap = False
+        if request_sdate and request_sdate > cached_latest:
             # 请求的开始日期晚于缓存的最晚日期，无重叠
+            has_overlap = False
+        
+        if not has_overlap:
             return None
         
-        # 有重叠，返回缓存中可用的部分数据
-        # 计算实际可用的日期范围
-        actual_sdate = max(request_sdate, cached_earliest) if request_sdate and cached_earliest else (request_sdate or cached_earliest)
-        actual_edate = min(request_edate, cached_latest) if request_edate and cached_latest else (request_edate or cached_latest)
-        
-        # 过滤数据
-        filtered_df = self._filter_dataframe_by_date(
-            df,
-            actual_sdate.strftime('%Y-%m-%d') if actual_sdate else None,
-            actual_edate.strftime('%Y-%m-%d') if actual_edate else None
-        )
+        # 按照请求的日期范围过滤数据（即使缓存中有更多数据，也只返回请求范围内的）
+        # 重要：必须按照 edate 截取，和从网络获取的行为一致
+        filtered_df = self._filter_dataframe_by_date(df, sdate, edate)
         
         if filtered_df.empty:
             return None
-        
-        # 确保索引是 DatetimeIndex
-        if not isinstance(filtered_df.index, pd.DatetimeIndex):
-            try:
-                filtered_df.index = pd.to_datetime(filtered_df.index)
-            except (ValueError, TypeError):
-                pass  # 如果转换失败，保持原样
         
         return (symbol, name, filtered_df)
     
@@ -449,7 +447,10 @@ class PersistentCache(Cache):
     def _put_duckdb(self, base_key: str, symbol: str, name: str, df: pd.DataFrame,
                      earliest_date: Optional[str], latest_date: Optional[str],
                      freq: str, fq: str, expire_at: Optional[pd.Timestamp]):
-        """存储到 duckdb"""
+        """存储到 duckdb
+        
+        注意：earliest_date 和 latest_date 仅用于记录，实际查询时从 DataFrame 索引获取
+        """
         import pickle
         data_blob = pickle.dumps(df)
         
