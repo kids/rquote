@@ -4,7 +4,7 @@
 
 ## 版本信息
 
-当前版本：**0.4.1**
+当前版本：**0.4.3**
 
 ## 主要特性
 
@@ -331,6 +331,50 @@ import os
 os.environ['RQUOTE_HTTP_TIMEOUT'] = '20'
 config_from_env = config.Config.from_env()
 ```
+
+### 日志配置
+
+**默认情况下，日志功能是关闭的。** 如果需要启用日志，可以通过环境变量手动开启：
+
+#### 通过环境变量开启日志
+
+```bash
+# 设置日志级别为 INFO（会同时输出到文件和控制台）
+export RQUOTE_LOG_LEVEL=INFO
+
+# 可选：自定义日志文件路径（默认为 /tmp/rquote.log）
+export RQUOTE_LOG_FILE=/path/to/your/logfile.log
+
+# 然后运行你的Python脚本
+python your_script.py
+```
+
+#### 支持的日志级别
+
+- `DEBUG`: 详细的调试信息
+- `INFO`: 一般信息（推荐）
+- `WARNING`: 警告信息
+- `ERROR`: 错误信息
+- `CRITICAL`: 严重错误
+
+#### 在Python代码中开启日志
+
+```python
+import os
+
+# 在导入 rquote 之前设置环境变量
+os.environ['RQUOTE_LOG_LEVEL'] = 'INFO'
+os.environ['RQUOTE_LOG_FILE'] = '/tmp/rquote.log'  # 可选
+
+from rquote import get_price
+
+# 现在日志已启用
+sid, name, df = get_price('sh000001')
+```
+
+#### 关闭日志
+
+如果不设置 `RQUOTE_LOG_LEVEL` 环境变量，或者设置为空值，日志功能将保持关闭状态（默认行为）。
 
 ### 使用改进的HTTP客户端
 
