@@ -9,6 +9,13 @@ from typing import Optional, Any, Tuple
 import pandas as pd
 from .base import Cache
 
+# 导入日志
+try:
+    from ..utils.logging import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
+
 # 尝试导入 duckdb（可选依赖）
 try:
     import duckdb
@@ -125,8 +132,20 @@ class PersistentCache(Cache):
     
     def _get_dataframe_date_range(self, df: pd.DataFrame) -> Tuple[Optional[pd.Timestamp], Optional[pd.Timestamp]]:
         """获取 DataFrame 的日期范围"""
-        if df.empty or not isinstance(df.index, pd.DatetimeIndex):
+        if df.empty:
             return None, None
+        
+        # 如果索引不是 DatetimeIndex，尝试转换
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                # 尝试转换为 DatetimeIndex
+                index = pd.to_datetime(df.index)
+                if len(index) > 0:
+                    return index.min(), index.max()
+            except (ValueError, TypeError):
+                pass
+            return None, None
+        
         return df.index.min(), df.index.max()
     
     def _filter_dataframe_by_date(self, df: pd.DataFrame, sdate: Optional[str] = None, 
@@ -164,23 +183,50 @@ class PersistentCache(Cache):
         combined = combined.sort_index()
         return combined
     
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str, sdate: Optional[str] = None, edate: Optional[str] = None) -> Optional[Any]:
         """
         获取缓存数据
         
         Args:
-            key: 缓存 key，格式如 "symbol:sdate:edate:freq:days:fq"
+            key: 缓存 key，可以是完整格式 "symbol:sdate:edate:freq:days:fq" 
+                 或 base_key 格式 "symbol:freq:fq"
+            sdate: 开始日期（可选，如果 key 是 base_key 格式则必须提供）
+            edate: 结束日期（可选，如果 key 是 base_key 格式则必须提供）
         
         Returns:
             (symbol, name, DataFrame) 或 None
         """
-        symbol, sdate, edate, freq, fq = self._extract_key_parts(key)
-        base_key = self._get_base_key(symbol, freq, fq)
+        # 判断 key 格式：如果是 base_key 格式（只有3部分），使用参数中的日期
+        parts = key.split(':')
+        if len(parts) == 3:
+            # base_key 格式：symbol:freq:fq
+            symbol, freq, fq = parts
+            base_key = key
+            # 使用参数中的日期，如果没有则使用空字符串
+            sdate = sdate or ''
+            edate = edate or ''
+        else:
+            # 完整 key 格式：symbol:sdate:edate:freq:days:fq
+            symbol, sdate_from_key, edate_from_key, freq, fq = self._extract_key_parts(key)
+            base_key = self._get_base_key(symbol, freq, fq)
+            # 优先使用参数中的日期，如果没有则使用 key 中的日期
+            sdate = sdate if sdate is not None else sdate_from_key
+            edate = edate if edate is not None else edate_from_key
+        
+        logger.info(f"[CACHE GET] key={key}, base_key={base_key}, sdate={sdate}, edate={edate}")
         
         if self.use_duckdb:
-            return self._get_duckdb(base_key, symbol, sdate, edate, freq, fq)
+            result = self._get_duckdb(base_key, symbol, sdate, edate, freq, fq)
         else:
-            return self._get_pickle(base_key, symbol, sdate, edate, freq, fq)
+            result = self._get_pickle(base_key, symbol, sdate, edate, freq, fq)
+        
+        if result:
+            _, _, df = result
+            logger.info(f"[CACHE HIT] key={key}, 返回数据行数={len(df)}, 日期范围={df.index.min()} 到 {df.index.max()}")
+        else:
+            logger.info(f"[CACHE MISS] key={key}, 缓存中无数据")
+        
+        return result
     
     def _get_duckdb(self, base_key: str, symbol: str, sdate: str, edate: str, 
                     freq: str, fq: str) -> Optional[Tuple[str, str, pd.DataFrame]]:
@@ -238,6 +284,13 @@ class PersistentCache(Cache):
         if filtered_df.empty:
             return None
         
+        # 确保索引是 DatetimeIndex
+        if not isinstance(filtered_df.index, pd.DatetimeIndex):
+            try:
+                filtered_df.index = pd.to_datetime(filtered_df.index)
+            except (ValueError, TypeError):
+                pass  # 如果转换失败，保持原样
+        
         return (symbol, name, filtered_df)
     
     def _get_pickle(self, base_key: str, symbol: str, sdate: str, edate: str,
@@ -292,6 +345,13 @@ class PersistentCache(Cache):
         if filtered_df.empty:
             return None
         
+        # 确保索引是 DatetimeIndex
+        if not isinstance(filtered_df.index, pd.DatetimeIndex):
+            try:
+                filtered_df.index = pd.to_datetime(filtered_df.index)
+            except (ValueError, TypeError):
+                pass  # 如果转换失败，保持原样
+        
         return (symbol, name, filtered_df)
     
     def put(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
@@ -299,7 +359,8 @@ class PersistentCache(Cache):
         存储缓存数据
         
         Args:
-            key: 缓存 key
+            key: 缓存 key，可以是完整格式 "symbol:sdate:edate:freq:days:fq" 
+                 或 base_key 格式 "symbol:freq:fq"（推荐使用 base_key）
             value: (symbol, name, DataFrame) 元组
             ttl: 过期时间（秒）
         """
@@ -310,8 +371,25 @@ class PersistentCache(Cache):
         if not isinstance(df, pd.DataFrame) or df.empty:
             return
         
-        _, _, _, freq, fq = self._extract_key_parts(key)
-        base_key = self._get_base_key(symbol, freq, fq)
+        logger.info(f"[CACHE PUT] key={key}, 数据行数={len(df)}, 日期范围={df.index.min() if not df.empty else 'N/A'} 到 {df.index.max() if not df.empty else 'N/A'}")
+        
+        # 确保索引是 DatetimeIndex（用于正确获取日期范围）
+        if not isinstance(df.index, pd.DatetimeIndex):
+            try:
+                df.index = pd.to_datetime(df.index)
+            except (ValueError, TypeError):
+                pass  # 如果转换失败，继续处理（_get_dataframe_date_range 会处理）
+        
+        # 判断 key 格式：如果是 base_key 格式（只有3部分），直接使用
+        parts = key.split(':')
+        if len(parts) == 3:
+            # base_key 格式：symbol:freq:fq
+            base_key = key
+            freq, fq = parts[1], parts[2]
+        else:
+            # 完整 key 格式：symbol:sdate:edate:freq:days:fq
+            _, _, _, freq, fq = self._extract_key_parts(key)
+            base_key = self._get_base_key(symbol, freq, fq)
         
         # 尝试从基础 key 获取完整数据并合并
         existing = self._get_raw(base_key)
@@ -322,6 +400,12 @@ class PersistentCache(Cache):
                 name = existing_name
             # 合并数据
             df = self._merge_dataframes(existing_df, df)
+            # 合并后再次确保索引是 DatetimeIndex
+            if not isinstance(df.index, pd.DatetimeIndex):
+                try:
+                    df.index = pd.to_datetime(df.index)
+                except (ValueError, TypeError):
+                    pass
         
         # 获取日期范围
         earliest_date, latest_date = self._get_dataframe_date_range(df)
@@ -338,6 +422,8 @@ class PersistentCache(Cache):
             self._put_duckdb(base_key, symbol, name, df, earliest_str, latest_str, freq, fq, expire_at)
         else:
             self._put_pickle(base_key, symbol, name, df, earliest_str, latest_str, freq, fq, expire_at)
+        
+        logger.info(f"[CACHE PUT] 存储完成, base_key={base_key}, 日期范围={earliest_str} 到 {latest_str}")
     
     def _get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame]]:
         """获取原始数据（不进行日期过滤）"""
