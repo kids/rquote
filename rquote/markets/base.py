@@ -174,63 +174,124 @@ class Market(ABC):
             
             need_extend_forward = False  # 需要向前扩展（更新日期）
             need_extend_backward = False  # 需要向后扩展（更早日期）
+            need_extend_for_length = False  # 需要扩展以满足长度要求（>=60行）
             extend_sdate = sdate
             extend_edate = edate
             
-            # 检查是否需要向前扩展
+            # 逻辑1: 检查是否需要向前扩展（请求的 edate 晚于缓存的最新日期）
             if request_edate and request_edate > cached_latest:
                 need_extend_forward = True
                 # 从缓存的最新日期+1天开始，扩展到请求的 edate
                 extend_sdate = (cached_latest + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
                 extend_edate = edate
             
-            # 检查是否需要向后扩展
-            if request_sdate and request_sdate < cached_earliest:
+            # 逻辑2: 如果从cache取的数据在edate前的长度小于等于60，则进行网络请求取数合并进cache
+            elif request_edate:
+                # 计算edate之前的数据行数
+                data_before_edate = cached_df[cached_df.index <= request_edate]
+                if len(data_before_edate) <= 60:
+                    need_extend_for_length = True
+                    # 从更早的日期开始获取，确保edate前有足够的数据（>=60行）
+                    # 往前推约4个月（120天），确保有足够的交易日
+                    target_sdate = request_edate - pd.Timedelta(days=120)
+                    extend_sdate = target_sdate.strftime('%Y-%m-%d')
+                    extend_edate = edate
+                    logger.info(f"[PRICE EXTEND LENGTH] symbol={symbol}, edate前数据行数={len(data_before_edate)} <= 60, 从更早日期获取, extend_sdate={extend_sdate}")
+            
+            # 逻辑3: 如果cache中有数据，但新的edate小于cache中数据最小值
+            elif request_edate and request_edate < cached_earliest:
+                need_extend_backward = True
+                # 从缓存最早日期开始往前获取，直到覆盖edate且edate前的长度大于60
+                # 先尝试从edate往前推足够的天数（约4个月）
+                target_sdate = request_edate - pd.Timedelta(days=120)
+                extend_sdate = target_sdate.strftime('%Y-%m-%d')
+                extend_edate = (cached_earliest - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+                logger.info(f"[PRICE EXTEND EARLY] symbol={symbol}, edate={request_edate} 早于缓存最早日期={cached_earliest}, 从更早日期获取, extend_sdate={extend_sdate}, extend_edate={extend_edate}")
+            
+            # 检查是否需要向后扩展（请求的 sdate 早于缓存的最早日期，且不是情况3）
+            if request_sdate and request_sdate < cached_earliest and not need_extend_backward:
                 need_extend_backward = True
                 # 从请求的 sdate 开始，扩展到缓存的最早日期-1天
                 extend_sdate = sdate
                 extend_edate = (cached_earliest - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
             
             # 如果需要扩展，获取缺失的数据
-            if need_extend_forward or need_extend_backward:
-                logger.info(f"[PRICE EXTEND] 需要扩展数据, symbol={symbol}, extend_sdate={extend_sdate}, extend_edate={extend_edate}, need_forward={need_extend_forward}, need_backward={need_extend_backward}")
-                # 获取扩展的数据
-                extended_result = fetch_func(symbol, extend_sdate, extend_edate, freq, days, fq)
-                _, _, extended_df = extended_result
-                logger.info(f"[PRICE FETCH] 从网络获取扩展数据, 数据行数={len(extended_df)}")
+            if need_extend_forward or need_extend_backward or need_extend_for_length:
+                logger.info(f"[PRICE EXTEND] 需要扩展数据, symbol={symbol}, extend_sdate={extend_sdate}, extend_edate={extend_edate}, need_forward={need_extend_forward}, need_backward={need_extend_backward}, need_length={need_extend_for_length}")
                 
-                if not extended_df.empty:
-                    # 确保两个 DataFrame 的索引都是 DatetimeIndex
-                    if not isinstance(cached_df.index, pd.DatetimeIndex):
-                        try:
-                            cached_df.index = pd.to_datetime(cached_df.index)
-                        except (ValueError, TypeError):
-                            pass
-                    if not isinstance(extended_df.index, pd.DatetimeIndex):
-                        try:
-                            extended_df.index = pd.to_datetime(extended_df.index)
-                        except (ValueError, TypeError):
-                            pass
+                # 对于逻辑2和逻辑3，可能需要循环获取直到满足条件
+                max_iterations = 5  # 最多循环5次，避免无限循环
+                iteration = 0
+                current_merged_df = cached_df.copy()
+                
+                while iteration < max_iterations:
+                    iteration += 1
+                    # 获取扩展的数据
+                    extended_result = fetch_func(symbol, extend_sdate, extend_edate, freq, days, fq)
+                    _, _, extended_df = extended_result
+                    logger.info(f"[PRICE FETCH] 从网络获取扩展数据 (迭代{iteration}), 数据行数={len(extended_df)}")
                     
-                    # 合并数据
-                    merged_df = pd.concat([cached_df, extended_df])
-                    merged_df = merged_df[~merged_df.index.duplicated(keep='last')]
-                    merged_df = merged_df.sort_index()
-                    
-                    # 过滤到请求的日期范围
-                    if request_sdate or request_edate:
-                        if request_sdate and request_edate:
-                            mask = (merged_df.index >= request_sdate) & (merged_df.index <= request_edate)
-                        elif request_sdate:
-                            mask = merged_df.index >= request_sdate
-                        else:
-                            mask = merged_df.index <= request_edate
-                        merged_df = merged_df[mask]
-                    
-                    result = (symbol, name, merged_df)
-                    # 更新缓存（使用原始 key，PersistentCache 会智能合并）
-                    self._put_cache(cache_key, result)
-                    return result
+                    if not extended_df.empty:
+                        # 确保两个 DataFrame 的索引都是 DatetimeIndex
+                        if not isinstance(current_merged_df.index, pd.DatetimeIndex):
+                            try:
+                                current_merged_df.index = pd.to_datetime(current_merged_df.index)
+                            except (ValueError, TypeError):
+                                pass
+                        if not isinstance(extended_df.index, pd.DatetimeIndex):
+                            try:
+                                extended_df.index = pd.to_datetime(extended_df.index)
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # 合并数据
+                        current_merged_df = pd.concat([current_merged_df, extended_df])
+                        current_merged_df = current_merged_df[~current_merged_df.index.duplicated(keep='last')]
+                        current_merged_df = current_merged_df.sort_index()
+                        
+                        # 检查是否满足条件（逻辑2和逻辑3需要检查长度）
+                        if need_extend_for_length or need_extend_backward:
+                            if request_edate:
+                                data_before_edate = current_merged_df[current_merged_df.index <= request_edate]
+                                if len(data_before_edate) > 60:
+                                    # 满足条件，退出循环
+                                    logger.info(f"[PRICE EXTEND] 已满足长度要求, edate前数据行数={len(data_before_edate)}")
+                                    break
+                                else:
+                                    # 还需要继续获取更早的数据
+                                    current_earliest = current_merged_df.index.min()
+                                    if current_earliest <= pd.to_datetime(extend_sdate):
+                                        # 已经获取到最早的数据，无法再往前获取
+                                        logger.warning(f"[PRICE EXTEND] 已获取到最早数据，但edate前数据行数={len(data_before_edate)}仍不足60行")
+                                        break
+                                    # 继续往前推
+                                    extend_sdate_dt = pd.to_datetime(extend_sdate) - pd.Timedelta(days=120)
+                                    extend_sdate = extend_sdate_dt.strftime('%Y-%m-%d')
+                                    logger.info(f"[PRICE EXTEND] 继续获取更早数据, 新extend_sdate={extend_sdate}")
+                                    continue
+                        
+                        # 对于逻辑1（向前扩展），不需要循环，直接退出
+                        if need_extend_forward and not need_extend_for_length and not need_extend_backward:
+                            break
+                    else:
+                        # 获取失败，退出循环
+                        logger.warning(f"[PRICE EXTEND] 获取数据为空，退出循环")
+                        break
+                
+                # 过滤到请求的日期范围
+                if request_sdate or request_edate:
+                    if request_sdate and request_edate:
+                        mask = (current_merged_df.index >= request_sdate) & (current_merged_df.index <= request_edate)
+                    elif request_sdate:
+                        mask = current_merged_df.index >= request_sdate
+                    else:
+                        mask = current_merged_df.index <= request_edate
+                    current_merged_df = current_merged_df[mask]
+                
+                result = (symbol, name, current_merged_df)
+                # 更新缓存（使用原始 key，PersistentCache 会智能合并）
+                self._put_cache(cache_key, result)
+                return result
             
             # 不需要扩展，直接返回缓存的数据
             # 注意：PersistentCache.get() 已经根据请求的日期范围进行了过滤，
