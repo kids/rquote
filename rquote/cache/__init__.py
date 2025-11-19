@@ -5,5 +5,10 @@
 from .base import Cache
 from .memory import MemoryCache
 
-__all__ = ['Cache', 'MemoryCache']
+# 尝试导入持久化缓存（可选依赖）
+try:
+    from .persistent import PersistentCache
+    __all__ = ['Cache', 'MemoryCache', 'PersistentCache']
+except ImportError:
+    __all__ = ['Cache', 'MemoryCache']
 

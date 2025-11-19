@@ -94,6 +94,13 @@ class CNStockMarket(Market):
     def _get_pt_price(self, symbol: str, sdate: str, edate: str, 
                      freq: str, days: int, fq: str) -> Tuple[str, str, pd.DataFrame]:
         """获取PT代码价格"""
+        # 先检查缓存（使用base_key格式，日期通过参数传递）
+        base_key = f"{symbol}:{freq}:{fq}"
+        cached = self._get_cached(base_key, sdate=sdate, edate=edate)
+        if cached:
+            logger.info(f"[PT CACHE HIT] symbol={symbol}, 从缓存返回数据")
+            return cached
+        
         try:
             url = f'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?_var=kline_dayqfq&param={symbol},{freq},{sdate},{edate},{days},{fq}'
             response = hget(url)
@@ -117,7 +124,7 @@ class CNStockMarket(Market):
                 parser = KlineParser()
                 name, df = parser.parse_tencent_kline(data, symbol)
                 result = (symbol, name, df)
-                self._put_cache(f"{symbol}:{sdate}:{edate}:{freq}", result)
+                self._put_cache(base_key, result)
                 return result
             except Exception as e:
                 logger.warning(f'Failed to parse {symbol}, using fallback: {e}')
@@ -147,7 +154,7 @@ class CNStockMarket(Market):
                     df[col] = pd.to_numeric(df[col], errors='coerce')
                 
                 result = (symbol, name, df)
-                self._put_cache(f"{symbol}:{sdate}:{edate}:{freq}", result)
+                self._put_cache(base_key, result)
                 return result
         except Exception as e:
             logger.warning(f'error fetching {symbol}, err: {e}')

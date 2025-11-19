@@ -98,10 +98,15 @@ class Market(ABC):
             if PersistentCache and isinstance(self.cache, PersistentCache):
                 # 从完整 key 中提取 base_key
                 parts = key.split(':')
-                if len(parts) >= 3:
+                if len(parts) == 3:
+                    # 已经是 base_key 格式：symbol:freq:fq
+                    base_key = key
+                    cached = self.cache.get(base_key, sdate=sdate, edate=edate)
+                elif len(parts) >= 6:
+                    # 完整 key 格式：symbol:sdate:edate:freq:days:fq
                     symbol = parts[0]
-                    freq = parts[3] if len(parts) > 3 else 'day'
-                    fq = parts[5] if len(parts) > 5 else 'qfq'
+                    freq = parts[3]
+                    fq = parts[5]
                     base_key = f"{symbol}:{freq}:{fq}"
                     cached = self.cache.get(base_key, sdate=sdate, edate=edate)
                 else:
@@ -119,10 +124,15 @@ class Market(ABC):
             if PersistentCache and isinstance(self.cache, PersistentCache):
                 # 从完整 key 中提取 base_key
                 parts = key.split(':')
-                if len(parts) >= 3:
+                if len(parts) == 3:
+                    # 已经是 base_key 格式：symbol:freq:fq
+                    base_key = key
+                    self.cache.put(base_key, value)
+                elif len(parts) >= 6:
+                    # 完整 key 格式：symbol:sdate:edate:freq:days:fq
                     symbol = parts[0]
-                    freq = parts[3] if len(parts) > 3 else 'day'
-                    fq = parts[5] if len(parts) > 5 else 'qfq'
+                    freq = parts[3]
+                    fq = parts[5]
                     base_key = f"{symbol}:{freq}:{fq}"
                     self.cache.put(base_key, value)
                 else:

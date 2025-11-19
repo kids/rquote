@@ -35,6 +35,11 @@ from .plots import PlotUtils
 from . import config
 from . import exceptions
 from .cache import MemoryCache, Cache
+# 尝试导入持久化缓存（可选依赖）
+try:
+    from .cache import PersistentCache
+except ImportError:
+    PersistentCache = None
 from .utils.http import HTTPClient
 
 
@@ -93,5 +98,6 @@ __all__ = [
     'exceptions',
     'MemoryCache',
     'Cache',
+    'PersistentCache',
     'HTTPClient',
 ]
