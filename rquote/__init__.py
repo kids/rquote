@@ -23,7 +23,8 @@ from .api import (
     get_us_stocks,
     get_cn_fund_list,
     get_tick,
-    get_industry_stocks
+    get_industry_stocks,
+    get_cnindex_stocks
 )
 
 # 工具类
@@ -89,6 +90,7 @@ __all__ = [
     'get_cn_fund_list',
     'get_tick',
     'get_industry_stocks',
+    'get_cnindex_stocks',
     # 工具类
     'WebUtils',
     'BasicFactors',
