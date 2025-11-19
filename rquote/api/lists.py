@@ -6,6 +6,7 @@ import json
 import re
 import base64
 import time
+from urllib.parse import urlencode
 from ..utils import hget, logger
 from ..exceptions import HTTPError
 
@@ -78,7 +79,7 @@ def get_us_stocks(k=100):
 
 def get_cn_fund_list():
     """
-    获取A股ETF基金列表
+    获取A股ETF基金列表（sina）
     
     Returns:
         基金列表，格式: [code, name, change, amount, price]
@@ -172,4 +173,67 @@ def get_industry_stocks(node):
         raise HTTPError('Failed to fetch industry stocks from Sina Finance')
     data = json.loads(a.text)
     return data
+
+
+def get_cnindex_stocks(index_type='hs300'):
+    """
+    获取中国指数成分股列表
+    
+    Args:
+        index_type: 指数类型，可选值: 'hs300', 'zz500', 'zz1000'
+                    hs300: 沪深300 (TYPE=1)
+                    zz500: 中证500 (TYPE=3)
+                    zz1000: 中证1000 (TYPE=7)
+    
+    Returns:
+        股票列表，包含 SECUCODE, SECURITY_CODE, SECURITY_NAME_ABBR, CLOSE_PRICE 等字段
+    """
+    # 指数类型到 TYPE 值的映射
+    index_type_map = {
+        'hs300': '1',
+        'zz500': '3',
+        'zz1000': '7'
+    }
+    
+    if index_type not in index_type_map:
+        raise ValueError(f"不支持的指数类型: {index_type}，支持的类型: {list(index_type_map.keys())}")
+    
+    type_value = index_type_map[index_type]
+    
+    # 构建 URL
+    base_url = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
+    params = {
+        'callback': 'jQuery112308471143523381743_1763517709888',
+        'sortColumns': 'SECURITY_CODE',
+        'sortTypes': '-1',
+        'pageSize': '500',
+        'pageNumber': '1',
+        'reportName': 'RPT_INDEX_TS_COMPONENT',
+        'columns': 'SECURITY_CODE,SECURITY_NAME_ABBR,INDUSTRY,WEIGHT,EPS,BPS,ROE,FREE_CAP',
+        'quoteColumns': '',
+        'quoteType': '0',
+        'source': 'WEB',
+        'client': 'WEB',
+        'filter': f'(TYPE="{type_value}")'
+    }
+    
+    # 构建完整 URL
+    url = f'{base_url}?{urlencode(params)}'
+    
+    # 发送请求
+    a = hget(url)
+    if not a:
+        raise HTTPError(f'Failed to fetch {index_type} stocks from EastMoney')
+    
+    # 解析 JSONP 格式的返回数据
+    # 格式: jQuery112308471143523381743_1763517709888({...})
+    json_str = a.text.split('(', 1)[1].rstrip(')')
+    data = json.loads(json_str)
+    
+    # 返回 result.data 中的数据列表
+    if data.get('result') and data['result'].get('data'):
+        return data['result']['data']
+    else:
+        logger.warning(f'No data found in response for {index_type}')
+        return []
 

@@ -10,7 +10,8 @@ from .lists import (
     get_cn_fund_list,
     get_cn_future_list,
     get_all_industries,
-    get_industry_stocks
+    get_industry_stocks,
+    get_cnindex_stocks
 )
 from .tick import get_tick
 from .stock_info import get_stock_concepts, get_stock_industry
@@ -27,6 +28,7 @@ __all__ = [
     'get_stock_concepts',
     'get_stock_industry',
     'get_all_industries',
-    'get_industry_stocks'
+    'get_industry_stocks',
+    'get_cnindex_stocks'
 ]
 

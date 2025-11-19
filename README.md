@@ -4,7 +4,7 @@
 
 ## 版本信息
 
-当前版本：**0.4.5**
+当前版本：**0.4.6**
 
 ## 主要特性
 
@@ -204,6 +204,28 @@ from rquote import get_us_stocks
 us_stocks = get_us_stocks(k=100)  # 获取前100只
 # 返回格式: [{name, symbol, market, mktcap, pe, ...}, ...]
 ```
+
+#### `get_cnindex_stocks(index_type='hs300')`
+
+获取中国指数成分股列表
+
+```python
+from rquote import get_cnindex_stocks
+
+# 获取沪深300成分股
+hs300_stocks = get_cnindex_stocks('hs300')
+# 获取中证500成分股
+zz500_stocks = get_cnindex_stocks('zz500')
+# 获取中证1000成分股
+zz1000_stocks = get_cnindex_stocks('zz1000')
+
+# 返回格式: [{SECURITY_CODE, SECURITY_NAME_ABBR, INDUSTRY, WEIGHT, EPS, BPS, ROE, FREE_CAP, ...}, ...]
+```
+
+支持的指数类型：
+- `'hs300'`: 沪深300
+- `'zz500'`: 中证500
+- `'zz1000'`: 中证1000
 
 ### 基金和期货
 
