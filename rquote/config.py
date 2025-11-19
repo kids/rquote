@@ -30,6 +30,8 @@ class Config:
         return cls(
             http_timeout=int(os.getenv('RQUOTE_HTTP_TIMEOUT', '10')),
             http_retry_times=int(os.getenv('RQUOTE_RETRY_TIMES', '3')),
+            http_retry_delay=float(os.getenv('RQUOTE_HTTP_RETRY_DELAY', '1.0')),
+            http_pool_size=int(os.getenv('RQUOTE_HTTP_POOL_SIZE', '10')),
             cache_enabled=os.getenv('RQUOTE_CACHE_ENABLED', 'true').lower() == 'true',
             cache_ttl=int(os.getenv('RQUOTE_CACHE_TTL', '3600')),
             log_level=os.getenv('RQUOTE_LOG_LEVEL', 'INFO'),
