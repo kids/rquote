@@ -227,7 +227,7 @@ def get_cnindex_stocks(index_type='hs300'):
     
     # 解析 JSONP 格式的返回数据
     # 格式: jQuery112308471143523381743_1763517709888({...})
-    json_str = a.text.split('(', 1)[1].rstrip(')')
+    json_str = a.text.split('(', 1)[1].rstrip(');')
     data = json.loads(json_str)
     
     # 返回 result.data 中的数据列表
