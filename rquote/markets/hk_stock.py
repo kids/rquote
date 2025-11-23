@@ -16,7 +16,13 @@ class HKStockMarket(Market):
     def normalize_symbol(self, symbol: str) -> str:
         """标准化港股代码"""
         if not symbol.startswith('hk'):
-            return 'hk' + symbol
+            symbol = 'hk' + symbol
+        
+        # 如果hk后面只有4位数字，则添加一个0
+        if symbol.startswith('hk') and len(symbol) == 6:
+            # hk + 4位数字 = 6位，需要补0变成 hk + 0 + 4位数字
+            return 'hk0' + symbol[2:]
+        
         return symbol
     
     def _fetch_price_data(self, symbol: str, sdate: str = '', edate: str = '', 

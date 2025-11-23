@@ -4,7 +4,7 @@
 
 ## 版本信息
 
-当前版本：**0.4.7**
+当前版本：**0.4.8**
 
 ## 主要特性
 
@@ -561,30 +561,8 @@ python -m pytest tests/test_api.py
 4. **网络要求**: 部分功能需要网络连接，请确保网络畅通
 5. **缓存使用**: 建议使用缓存机制减少网络请求，提升性能
 
-## 更新日志
-
-### v0.3.5 (2024)
-- 修复Critical Bugs
-- 新增配置管理模块
-- 新增异常处理体系
-- 新增缓存抽象层
-- 改进HTTP客户端
-- 新增单元测试
-- 完善文档
-
-### v0.3.4
-- 初始版本
 
 ## 贡献
 
 欢迎提交Issue和Pull Request！
 
-## 许可证
-
-Copyright (c) 2021 Roi ZHAO
-
-## 相关文档
-
-- [架构改进建议](ARCHITECTURE_IMPROVEMENTS.md)
-- [重构代码示例](REFACTORING_EXAMPLES.md)
-- [快速修复清单](QUICK_FIXES.md)
