@@ -191,8 +191,11 @@ def get_cnindex_stocks(index_type='hs300'):
     # 指数类型到 TYPE 值的映射
     index_type_map = {
         'hs300': '1',
+        'sz50': '2',
         'zz500': '3',
-        'zz1000': '7'
+        'kc500': '4',
+        'zz1000': '7',
+        'zz2000': '13'
     }
     
     if index_type not in index_type_map:
@@ -202,6 +205,10 @@ def get_cnindex_stocks(index_type='hs300'):
     
     # 构建 URL
     base_url = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
+    page_size = 500
+    all_data = []
+    
+    # 先获取第一页，确定总数
     params = {
         'callback': 'jQuery112308471143523381743_1763517709888',
         'sortColumns': 'SECURITY_CODE',
@@ -232,7 +239,34 @@ def get_cnindex_stocks(index_type='hs300'):
     
     # 返回 result.data 中的数据列表
     if data.get('result') and data['result'].get('data'):
-        return data['result']['data']
+        all_data.extend(data['result']['data'])
+        total = int(index_type[2:])
+        
+        # 如果总数超过 page_size，需要分页获取
+        if total > page_size:
+            total_pages = (total + page_size - 1) // page_size  # 向上取整
+            
+            # 从第二页开始获取
+            for page_num in range(2, total_pages + 1):
+                params['pageNumber'] = str(page_num)
+                url = f'{base_url}?{urlencode(params)}'
+                
+                a = hget(url)
+                if not a:
+                    logger.warning(f'Failed to fetch page {page_num} for {index_type}')
+                    continue
+                
+                json_str = a.text.split('(', 1)[1].rstrip(');')
+                page_data = json.loads(json_str)
+                
+                if page_data.get('result') and page_data['result'].get('data'):
+                    all_data.extend(page_data['result']['data'])
+                
+                # 避免请求过快
+                time.sleep(0.1)
+        
+        logger.debug(f'Fetched {len(all_data)} stocks for {index_type} (total: {total})')
+        return all_data
     else:
         logger.warning(f'No data found in response for {index_type}')
         return []
