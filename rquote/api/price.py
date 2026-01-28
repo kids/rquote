@@ -38,7 +38,7 @@ def _normalize_dataframe_index(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_price(i: str, sdate: str = '', edate: str = '', freq: str = 'day', 
+def get_price(i: str, sdate: str = '', edate: str = '', freq: str = 'day',
               days: int = 320, fq: str = 'qfq', dd=None) -> Tuple[str, str, pd.DataFrame]:
     '''
     获取价格数据
@@ -84,19 +84,24 @@ def get_price(i: str, sdate: str = '', edate: str = '', freq: str = 'day',
     return symbol, name, df
 
 
-def get_price_longer(i: str, l: int = 2, dd=None) -> Tuple[str, str, pd.DataFrame]:
+def get_price_longer(i: str, l: int = 2, edate: str = '', freq: str = 'day',
+                     fq: str = 'qfq', dd=None) -> Tuple[str, str, pd.DataFrame]:
     """
     获取更长时间的历史数据
     
     Args:
         i: 股票代码
         l: 年数
+        edate: 结束日期，同 ``get_price``
+        freq: 频率，同 ``get_price``
+        fq: 复权方式，同 ``get_price``
         dd: 缓存对象
     
     Returns:
         (symbol, name, DataFrame)
     """
-    _, name, a = get_price(i, dd=dd)
+    # 首段数据直接复用 get_price，透传 edate/freq/fq 参数
+    _, name, a = get_price(i, edate=edate, freq=freq, fq=fq, dd=dd)
     # 使用 DatetimeIndex 的格式化方法（get_price 已统一转换为 DatetimeIndex）
     if isinstance(a.index, pd.DatetimeIndex) and len(a.index) > 0:
         d1 = a.index[0].strftime('%Y%m%d')
@@ -104,12 +109,16 @@ def get_price_longer(i: str, l: int = 2, dd=None) -> Tuple[str, str, pd.DataFram
         # 降级处理：如果索引不是 DatetimeIndex（理论上不应该发生），尝试格式化
         try:
             d1 = str(a.index[0])[:8] if len(str(a.index[0])) >= 8 else str(a.index[0])
-        except:
+        except Exception:
             d1 = a.index.format()[0] if hasattr(a.index, 'format') else str(a.index[0])
     
     for y in range(1, l):
         d0 = str(int(d1[:4]) - 1) + d1[4:]
-        a = pd.concat((get_price(i, d0, d1, dd=dd)[2], a), 0).drop_duplicates()
+        # 逐年向前补数据，保持与 get_price 相同的 freq/fq 配置
+        a = pd.concat(
+            (get_price(i, d0, d1, freq=freq, fq=fq, dd=dd)[2], a),
+            0
+        ).drop_duplicates()
         d1 = d0
     return i, name, a
 
