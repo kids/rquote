@@ -102,24 +102,12 @@ def get_price_longer(i: str, l: int = 2, edate: str = '', freq: str = 'day',
     """
     # 首段数据直接复用 get_price，透传 edate/freq/fq 参数
     _, name, a = get_price(i, edate=edate, freq=freq, fq=fq, dd=dd)
-    # 使用 DatetimeIndex 的格式化方法（get_price 已统一转换为 DatetimeIndex）
-    if isinstance(a.index, pd.DatetimeIndex) and len(a.index) > 0:
-        d1 = a.index[0].strftime('%Y%m%d')
-    else:
-        # 降级处理：如果索引不是 DatetimeIndex（理论上不应该发生），尝试格式化
-        try:
-            d1 = str(a.index[0])[:8] if len(str(a.index[0])) >= 8 else str(a.index[0])
-        except Exception:
-            d1 = a.index.format()[0] if hasattr(a.index, 'format') else str(a.index[0])
-    
+        
     for y in range(1, l):
-        d0 = str(int(d1[:4]) - 1) + d1[4:]
+        d1 = a.index[0].strftime('%Y%m%d')
+        b = get_price(i, edate=d1, freq=freq, fq=fq, dd=dd)[2]
         # 逐年向前补数据，保持与 get_price 相同的 freq/fq 配置
-        a = pd.concat(
-            (get_price(i, d0, d1, freq=freq, fq=fq, dd=dd)[2], a),
-            0
-        ).drop_duplicates()
-        d1 = d0
+        a = pd.concat((b, a), axis=0).drop_duplicates()
     return i, name, a
 
 
