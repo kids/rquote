@@ -4,7 +4,7 @@
 
 ## 版本信息
 
-当前版本：**0.5.1**
+当前版本：**0.5.2**
 
 ## 主要特性
 
@@ -53,8 +53,8 @@ sid, name, df = get_price('sz000001', sdate='2024-01-01', edate='2024-02-01')
 ```python
 from rquote import get_price, MemoryCache
 
-# 创建缓存实例
-cache = MemoryCache(ttl=3600)  # 缓存1小时
+# 创建缓存实例（ttl 单位：秒）
+cache = MemoryCache(ttl=3600)  # 缓存 1 小时
 
 # 使用缓存（通过dd参数传递MemoryCache实例）
 sid, name, df = get_price('sh000001', dd=cache)
@@ -70,7 +70,7 @@ sid, name, df = get_price('sh000001', dd=cache)
 
 #### 持久化缓存（PersistentCache）
 
-持久化缓存支持跨进程/跨运行的缓存持久化，数据会保存到本地文件。
+持久化缓存支持跨进程/跨运行的缓存持久化，数据会保存到本地文件。支持多种存储后端，通过**工厂**按名称选择。
 
 **安装可选依赖：**
 ```bash
@@ -79,26 +79,27 @@ pip install rquote[persistent]
 uv pip install "rquote[persistent]"
 ```
 
-**使用持久化缓存：**
+**推荐：使用工厂创建（指定后端类型）**（`ttl` 单位为**秒**，默认 `None` 表示永久不过期）
 ```python
-from rquote import get_price, PersistentCache
+from rquote import get_price, create_persistent_cache
 
-# 创建持久化缓存实例
-# 默认使用 duckdb（如果已安装），否则使用 pickle 文件
-cache = PersistentCache(ttl=86400)  # 缓存24小时，默认路径：~/.rquote/cache.db
-
-# 或指定自定义路径
-cache = PersistentCache(db_path='./my_cache.db', use_duckdb=True)
+# 按后端名称创建，默认路径为 ~/.rquote/cache.{db|jsonl|pkl}
+cache = create_persistent_cache(backend='sqlite')
+cache = create_persistent_cache(backend='jsonl', path='/tmp/cache.jsonl')  # 需过期可传 ttl=86400（秒）
 
 # 使用缓存
 sid, name, df = get_price('sh000001', dd=cache)
+cache.close()
+```
 
-# 持久化缓存支持智能扩展：
-# - 当请求的结束日期不在缓存中时，会自动从缓存的最新日期向前扩展
-# - 当请求的开始日期不在缓存中时，会自动从缓存的最早日期向后扩展
-# - 数据会自动合并，避免重复请求
+**兼容旧写法（不指定 backend 时）：**
+```python
+from rquote import get_price, PersistentCache
 
-# 关闭缓存（可选，程序退出时会自动保存）
+# 不传 backend 时默认用 sqlite；ttl 单位秒，默认 None 即永久不过期
+cache = PersistentCache()
+cache = PersistentCache(db_path='./my_cache.db')
+sid, name, df = get_price('sh000001', dd=cache)
 cache.close()
 ```
 
@@ -107,7 +108,20 @@ cache.close()
 - ✅ 智能数据合并：相同股票的数据会自动合并，key 不包含日期范围
 - ✅ 智能扩展：当请求的日期范围超出缓存时，自动扩展并合并数据
 - ✅ 支持 TTL：可设置缓存过期时间
-- ✅ 可选 duckdb：如果安装了 duckdb，使用 duckdb 存储（性能更好），否则使用 pickle 文件
+- ✅ 多后端：sqlite / jsonl / pickle，均为标准库、无额外依赖，见下方选择维度
+
+**后端选择维度**
+
+| 维度 | sqlite | jsonl | pickle |
+|------|--------|--------|--------|
+| **依赖** | 标准库，无额外依赖 | 标准库，无额外依赖 | 标准库 |
+| **内存占用** | 低（按需从文件读） | 低（按需从文件读） | 高（整库常驻内存） |
+| **写入方式** | 单文件、随机写 | 单文件、整文件重写 | 单文件、整库序列化 |
+| **适用场景** | 通用、嵌入式、内存紧张 | 通用、可读性好、内存紧张 | 兼容旧版、小数据量 |
+
+**内存有限时的建议：**
+- **优先使用 `sqlite` 或 `jsonl`**：两者都不会把整份缓存加载进内存，按 key 读写，适合本机内存紧张、树莓派或容器环境。
+- 避免在内存紧张时使用 **`pickle`**：每次读写会整体加载/保存字典，数据量大时易 OOM。
 
 ## 主要功能
 
@@ -351,7 +365,7 @@ custom_config = config.Config(
     http_timeout=15,
     http_retry_times=5,
     cache_enabled=True,
-    cache_ttl=7200
+    cache_ttl=7200  # 单位：秒
 )
 
 # 从环境变量创建配置
@@ -421,8 +435,8 @@ with HTTPClient(timeout=15, retry_times=3) as client:
 ```python
 from rquote.cache import MemoryCache
 
-# 创建缓存
-cache = MemoryCache(ttl=3600)  # 缓存1小时
+# 创建缓存（ttl 单位：秒）
+cache = MemoryCache(ttl=3600)  # 缓存 1 小时
 
 # 使用缓存
 cache.put('key1', 'value1')

@@ -4,10 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rquote"
-version = "0.5.1"
+version = "0.5.2"
 description = "Mostly day quotes of cn/hk/us/fund/future markets, side with quote list fetch"
 readme = "README.md"
-# requires-python = ">=3.6.1" # duckdb requires higher python version
 requires-python = ">=3.9.0"
 dependencies = [
     "build>=0.9.0",
@@ -17,4 +16,4 @@ dependencies = [
     "twine>=3.8.0",
 ]
 [project.optional-dependencies]
-persistent = ["duckdb>=0.9.0"]
+persistent = []  # 持久化缓存仅用标准库（sqlite/jsonl/pickle），无额外依赖
