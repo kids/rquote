@@ -48,7 +48,9 @@ class TencentDataSource(DataSource):
         elif symbol[:2] == 'hk':
             url = f"{self.BASE_URL_HK}?param={symbol},{freq},{sdate},{edate},{days},{fq}"
         elif symbol[:2] == 'us':
-            url = f"{self.BASE_URL_US}?param={symbol},{freq},{sdate},{edate},{days},{fq}"
+            # 美股 K 线接口示例：
+            # https://web.ifzq.gtimg.cn/appstock/app/usfqkline/get?_var=kline_dayqfq&param=usNVDA.OQ,day,,,320,qfq
+            url = f"{self.BASE_URL_US}?_var=kline_dayqfq&param={symbol},{freq},{sdate},{edate},{days},{fq}"
         else:
             raise DataSourceError(f"Unsupported symbol format: {symbol}")
         
@@ -59,6 +61,10 @@ class TencentDataSource(DataSource):
         # 解析响应，确保响应对象被正确关闭
         try:
             text = response.text
+            # usfqkline 在带 _var 参数时会返回 "kline_dayqfq={...}" 形式，
+            # 这里在 json.loads 之前去掉前缀，便于统一解析。
+            if text.startswith('kline_dayqfq='):
+                text = text[len('kline_dayqfq='):]
             # 处理不同的响应格式
             if text.startswith('{'):
                 # 直接是JSON
