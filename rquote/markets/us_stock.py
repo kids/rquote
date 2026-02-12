@@ -37,8 +37,8 @@ class USStockMarket(Market):
         """从数据源获取美股价格数据"""
         parser = KlineParser()
 
-        # 如果已经带有 .OQ 或 .N 后缀，直接按当前 symbol 请求一次即可
-        if symbol.endswith(('.OQ', '.N')):
+        # 如果已经带有 .OQ / .N / .AM（ETF）后缀，直接按当前 symbol 请求一次即可
+        if symbol.endswith(('.OQ', '.N', '.AM')):
             try:
                 raw_data = self.data_source.fetch_kline(
                     symbol, freq=freq, sdate=sdate, edate=edate, days=days, fq=fq
@@ -49,7 +49,7 @@ class USStockMarket(Market):
                 logger.warning(f'Failed to fetch {symbol}: {e}')
                 raise
 
-        # 否则：美股但未带交易所后缀时，同时尝试 .OQ / .N 两个组合
+        # 否则：美股但未带交易所后缀时，同时尝试 .OQ / .N 组合
         candidates = []
         for suffix in ('.OQ', '.N'):
             full_symbol = f"{symbol}{suffix}"
@@ -68,7 +68,7 @@ class USStockMarket(Market):
                 continue
 
         if not candidates:
-            # 两个组合都失败，按原 symbol 抛出错误
+            # 所有后缀组合都失败，按原 symbol 抛出错误
             raise DataSourceError(f'Failed to fetch US symbol {symbol} with .OQ/.N suffixes')
 
         # 按规则选择最优：

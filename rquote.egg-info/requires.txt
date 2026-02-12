@@ -5,4 +5,3 @@ setuptools>=42
 twine>=3.8.0
 
 [persistent]
-duckdb>=0.9.0

@@ -19,6 +19,7 @@ rquote/cache/__init__.py
 rquote/cache/base.py
 rquote/cache/memory.py
 rquote/cache/persistent.py
+rquote/cache/storage.py
 rquote/data_sources/__init__.py
 rquote/data_sources/base.py
 rquote/data_sources/sina.py
