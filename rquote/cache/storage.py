@@ -13,7 +13,7 @@ import json
 import pickle
 import sqlite3
 from pathlib import Path
-from typing import Optional, Tuple, Protocol, Any
+from typing import Optional, Tuple, Protocol, Any, Callable
 import pandas as pd
 
 
@@ -222,6 +222,131 @@ class JsonlBackend:
     def close(self) -> None:
         pass  # 无长连接，可选再调用 _save() 一次
 
+
+# ---------- 默认实现：按市场分片 JSONL ----------
+
+class MarketJsonlBackend:
+    """
+    按市场分片的 JSONL 存储后端。
+    - cn -> A股/基金等默认市场
+    - hk -> 港股
+    - us -> 美股
+    - fu -> 期货
+    """
+
+    def __init__(
+        self,
+        market_paths: Optional[dict[str, str]] = None,
+        route_fn: Optional[Callable[[str], str]] = None,
+    ):
+        home = Path.home()
+        cache_dir = home / ".rquote"
+        cache_dir.mkdir(exist_ok=True)
+        self.market_paths = market_paths or {
+            "cn": str(cache_dir / "cache_cn.jsonl"),
+            "hk": str(cache_dir / "cache_hk.jsonl"),
+            "us": str(cache_dir / "cache_us.jsonl"),
+            "fu": str(cache_dir / "cache_fu.jsonl"),
+        }
+        self._route_fn = route_fn or self._default_route
+        self._backends = {m: JsonlBackend(p) for m, p in self.market_paths.items()}
+        self._fallback_market = "cn"
+
+    @staticmethod
+    def _default_route(symbol: str) -> str:
+        s = str(symbol or "").lower()
+        if s.startswith("us"):
+            return "us"
+        if s.startswith("hk"):
+            return "hk"
+        if s.startswith("fu"):
+            return "fu"
+        return "cn"
+
+    @staticmethod
+    def _symbol_from_key(base_key: str) -> str:
+        parts = base_key.split(":")
+        return parts[0] if parts else ""
+
+    def _backend_for_symbol(self, symbol: str) -> JsonlBackend:
+        market = self._route_fn(symbol)
+        if market in self._backends:
+            return self._backends[market]
+        return self._backends[self._fallback_market]
+
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+        symbol = self._symbol_from_key(base_key)
+        backend = self._backend_for_symbol(symbol)
+        return backend.get_raw(base_key)
+
+    def put(
+        self,
+        base_key: str,
+        symbol: str,
+        name: str,
+        df: pd.DataFrame,
+        earliest_date: Optional[str],
+        latest_date: Optional[str],
+        freq: str,
+        fq: str,
+        expire_at: Optional[pd.Timestamp],
+    ) -> None:
+        backend = self._backend_for_symbol(symbol)
+        backend.put(base_key, symbol, name, df, earliest_date, latest_date, freq, fq, expire_at)
+
+    def delete(self, base_key: str) -> None:
+        symbol = self._symbol_from_key(base_key)
+        backend = self._backend_for_symbol(symbol)
+        backend.delete(base_key)
+
+    def clear(self) -> None:
+        for backend in self._backends.values():
+            backend.clear()
+
+    def close(self) -> None:
+        for backend in self._backends.values():
+            backend.close()
+
+    def status_rows(self, symbols: Optional[list[str]] = None) -> list[dict[str, Any]]:
+        target_set = set(symbols) if symbols else None
+        rows: list[dict[str, Any]] = []
+        for market, path in self.market_paths.items():
+            p = Path(path)
+            if not p.exists():
+                continue
+            with p.open("r", encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s:
+                        continue
+                    try:
+                        obj = json.loads(s)
+                    except Exception:
+                        continue
+                    symbol = obj.get("symbol")
+                    if not symbol:
+                        continue
+                    if target_set is not None and symbol not in target_set:
+                        continue
+                    payload = obj.get("data")
+                    nrows = -1
+                    if payload:
+                        try:
+                            df = pickle.loads(base64.b64decode(payload))
+                            nrows = len(df)
+                        except Exception:
+                            nrows = -1
+                    rows.append(
+                        {
+                            "market": market,
+                            "symbol": symbol,
+                            "earliest_date": obj.get("earliest_date"),
+                            "latest_date": obj.get("latest_date"),
+                            "rows": nrows,
+                        }
+                    )
+        rows.sort(key=lambda x: x["symbol"])
+        return rows
 
 # ---------- 可选实现：Pickle（兼容旧 use_duckdb=False） ----------
 
