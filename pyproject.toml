@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rquote"
-version = "0.5.7"
+version = "0.5.8"
 description = "Mostly day quotes of cn/hk/us/fund/future markets, side with quote list fetch"
 readme = "README.md"
 requires-python = ">=3.9.0"

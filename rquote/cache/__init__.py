@@ -7,12 +7,13 @@ from .memory import MemoryCache
 
 # 尝试导入持久化缓存与工厂（可选依赖）
 try:
-    from .persistent import PersistentCache, create_persistent_cache
+    from .persistent import PersistentCache, MarketPersistentCache, create_persistent_cache
     from . import storage
     __all__ = [
         'Cache',
         'MemoryCache',
         'PersistentCache',
+        'MarketPersistentCache',
         'create_persistent_cache',
         'storage',
     ]

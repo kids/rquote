@@ -102,10 +102,70 @@ def get_cn_future_list():
     Returns:
         期货代码列表，带fu前缀
     """
-    a = hget('https://finance.sina.com.cn/futuremarket/')
-    if a:
-        futurelist_active = [
-            'fu' + i for i in re.findall(r'quotes/(.*?\d+).shtml', a.text)]
+    base_url = 'https://vip.stock.finance.sina.com.cn/quotes_service/view/qihuohangqing.html'
+    links_pattern = re.compile(
+        r'https?://finance\.sina\.com\.cn/futures/quotes/[A-Za-z0-9]+/([A-Za-z]+)\d+\.shtml'
+    )
+    node_pattern = re.compile(r"'([a-z]+_qh)'")
+    jsonp_prefix_pattern = re.compile(r"/\*.*?\*/\s*", re.S)
+
+    # 先按 titlePos_0..4 拉 5 个页面（与页面锚点保持一致）
+    page_html = []
+    for i in range(5):
+        a = hget(f'{base_url}#titlePos_{i}')
+        if a:
+            page_html.append(a.text)
+
+    if not page_html:
+        return []
+
+    # 页面内合约链接多为动态渲染；先尝试直接提取
+    raw_links = []
+    for html in page_html:
+        raw_links.extend(re.findall(
+            r'https?://finance\.sina\.com\.cn/futures/quotes/[A-Za-z0-9]+/[A-Za-z]+\d+\.shtml',
+            html,
+        ))
+
+    # 若页面静态内容没有链接，则走页面引用的数据接口取 symbol 再组装链接
+    if not raw_links:
+        script_resp = hget('https://n.sinaimg.cn/finance/qihuohangqing/qihuohangqing.js?20241116')
+        nodes = sorted(set(node_pattern.findall(script_resp.text))) if script_resp else []
+        for node in nodes:
+            api_url = (
+                "https://vip.stock.finance.sina.com.cn/quotes_service/api/jsonp.php/"
+                "IO.XSRV2.CallbackList['rquote_fut']/Market_Center.getHQFuturesData"
+                f"?page=1&num=500&sort=symbol&asc=1&node={node}"
+            )
+            resp = hget(api_url)
+            if not resp:
+                continue
+            payload = jsonp_prefix_pattern.sub('', resp.text).strip()
+            if '(' not in payload or ')' not in payload:
+                continue
+            payload = payload.split('(', 1)[1].rsplit(')', 1)[0]
+            try:
+                data = json.loads(payload)
+            except Exception:
+                continue
+            if not isinstance(data, list):
+                continue
+            for item in data:
+                symbol = item.get('symbol', '')
+                exchange = item.get('exchange', '')
+                if symbol and exchange:
+                    raw_links.append(
+                        f'https://finance.sina.com.cn/futures/quotes/{exchange}/{symbol}.shtml'
+                    )
+
+    futurelist_active = []
+    seen = set()
+    for code in links_pattern.findall('\n'.join(raw_links)):
+        normalized = f'fu{code.upper()}0'
+        if normalized not in seen:
+            seen.add(normalized)
+            futurelist_active.append(normalized)
+
     return futurelist_active
 
 
