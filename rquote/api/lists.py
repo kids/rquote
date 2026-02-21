@@ -39,19 +39,28 @@ def get_cn_stock_list(money_min=2e8):
     return df
 
 
-def get_hk_stocks_500():
+def get_hk_stocks_500(max_pages=1):
     """
-    获取港股前500只股票列表
-    
+    获取港股前500只股票列表（按成交额排序，每页500只）
+
+    Args:
+        max_pages: 最多取几页，1~5，默认1（仅第1页，即前500只）
+
     Returns:
-        股票列表
+        股票列表，每项为按 '~' 分割的字段列表
     """
-    a = hget(
-        'https://stock.gtimg.cn/data/hk_rank.php?board=main_all&metric=amount&' +
-        'pageSize=500&reqPage=1&order=desc&var_name=list_data')
-    if a:
-        a = [i.split('~') for i in json.loads(a.text.split('list_data=')[1])['data']['page_data']]
-    return a
+    max_pages = max(1, min(5, int(max_pages)))
+    result = []
+    for page in range(1, max_pages + 1):
+        a = hget(
+            'https://stock.gtimg.cn/data/hk_rank.php?board=main_all&metric=amount&' +
+            f'pageSize=500&reqPage={page}&order=desc&var_name=list_data')
+        if a:
+            raw = json.loads(a.text.split('list_data=')[1])['data']['page_data']
+            result.extend([i.split('~') for i in raw])
+            if len(raw) < 500:
+                break
+    return result
 
 
 def get_us_stocks(k=100):

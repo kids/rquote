@@ -200,14 +200,15 @@ stocks = get_cn_stock_list(money_min=5e8)
 # 返回格式: [{code, name, pe_ttm, volume, turnover/亿, ...}, ...]
 ```
 
-#### `get_hk_stocks_500()`
+#### `get_hk_stocks_500(max_pages=1)`
 
-获取港股前500只股票列表(按当日成交额排序)
+获取港股列表(按当日成交额排序，每页500只)。默认只取第1页；可传 `max_pages=2~5` 取多页（最多5页）。
 
 ```python
 from rquote import get_hk_stocks_500
 
-stocks = get_hk_stocks_500()
+stocks = get_hk_stocks_500()           # 默认前500只
+stocks = get_hk_stocks_500(max_pages=5)  # 最多2500只
 # 返回格式: [[code, name, price, -, -, -, -, volume, turnover, ...], ...]
 ```
 
