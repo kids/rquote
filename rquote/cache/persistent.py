@@ -317,9 +317,10 @@ class PersistentCache(Cache):
     ) -> Tuple[str, str, pd.DataFrame]:
         """
         自动扩展并融合缓存数据：
-        - 请求日期晚于缓存最新：向前扩展并融合
+        - 请求日期晚于缓存最新：向前扩展并融合（若缓存已有今日/昨日则跳过）
         - 请求日期过早或 edate 前数据不足：向后扩展并融合
         - 融合统一通过 put() 完成（去重/排序/覆盖）
+        - 依赖后端读后即写：下一次 get() 必须能读到本次 put()，否则多轮会重复请求。
         """
         base_key = self._get_base_key(symbol, freq, fq)
         request_edate = self._parse_date(edate) if edate else None
@@ -347,9 +348,34 @@ class PersistentCache(Cache):
             final_hit = self.get(base_key, sdate=sdate, edate=edate)
             return final_hit if final_hit else fetched
 
-        # 1) 前向扩展：缓存最新仍早于请求 edate
-        if request_edate is not None and request_edate > full_df.index.max():
-            today_str = pd.Timestamp.now().strftime("%Y-%m-%d")
+        # 1) 前向扩展：仅当缓存最新早于请求 edate 且缓存非“已是最新”时才拉取
+        # 若请求 edate 为“未来/不限”（如 2099）且缓存已有今日或昨日，视为已是最新，不发起前向请求
+        cache_latest = full_df.index.max()
+        today_ts = pd.Timestamp.now().normalize()
+        try:
+            # 统一为 naive 再比较，避免 tz-aware 与 naive 比较异常
+            cl = cache_latest.tz_localize(None) if getattr(cache_latest, "tz", None) else cache_latest
+            req = request_edate.tz_localize(None) if getattr(request_edate, "tz", None) else request_edate
+            cache_fresh = cl >= (today_ts - pd.Timedelta(days=1))
+            request_is_future = req >= today_ts
+        except (TypeError, ValueError, AttributeError):
+            cache_fresh = False
+            request_is_future = False
+        is_weekend = today_ts.weekday() >= 5
+        is_weekly_market = str(symbol or "").lower().startswith(("sh", "sz", "hk", "us"))
+        skip_forward_non_trading_day = is_weekend and is_weekly_market
+        if skip_forward_non_trading_day:
+            logger.info(
+                f"[PRICE AUTO FORWARD] skip on weekend for symbol={symbol}, today={today_ts.date()}"
+            )
+
+        if (
+            request_edate is not None
+            and request_edate > cache_latest
+            and not skip_forward_non_trading_day
+            and not (cache_fresh and request_is_future)
+        ):
+            today_str = today_ts.strftime("%Y-%m-%d")
             for _ in range(max_extend_iterations):
                 current_latest = full_df.index.max()
                 extend_sdate = (current_latest + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
@@ -375,8 +401,9 @@ class PersistentCache(Cache):
                     logger.info(f"[PRICE AUTO FORWARD] reached request edate={request_edate}")
                     break
 
-        # 2) 后向扩展：请求 edate 早于缓存最早，或 edate 前样本不足
-        if request_edate is not None:
+        # 2) 后向扩展：仅在请求 edate 不晚于缓存最新时才考虑；
+        # 对“未来/不限”请求（例如 edate=2099）不做后向补历史，避免新股反复无效请求。
+        if request_edate is not None and request_edate <= full_df.index.max():
             data_before = full_df[full_df.index <= request_edate]
             need_backward = (request_edate < full_df.index.min()) or (len(data_before) <= min_rows_before_edate)
             if need_backward:
