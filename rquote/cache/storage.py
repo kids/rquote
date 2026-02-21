@@ -12,6 +12,7 @@ import base64
 import json
 import pickle
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Optional, Tuple, Protocol, Any, Callable
 import pandas as pd
@@ -136,11 +137,18 @@ class SQLiteBackend:
 # ---------- 默认实现：JSONL（单文件，每行一条 JSON） ----------
 
 class JsonlBackend:
-    """使用单文件 JSONL 的存储后端（每行一个 JSON 对象，data 为 base64 的 pickle）。"""
+    """使用单文件 JSONL 的存储后端（每行一个 JSON 对象，data 为 base64 的 pickle）。
+
+    写入策略：put() 追加写入（O(1)），不重写整个文件，支持多线程并发。
+    _load() 按行读取时后者覆盖前者，自动去重（last-write-wins）。
+    compact() / close() 时执行整体重写，消除追加产生的冗余行。
+    """
 
     def __init__(self, path: str):
         self.path = path
         self._data: dict[str, dict] = {}
+        self._lock = threading.Lock()
+        self._append_count = 0
         self._load()
 
     def _load(self) -> None:
@@ -162,26 +170,44 @@ class JsonlBackend:
                     continue
 
     def _save(self) -> None:
+        """整体重写文件（compact）。调用方须持有 _lock。"""
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "w", encoding="utf-8") as f:
             for base_key, obj in self._data.items():
                 obj = dict(obj)
                 obj["cache_key"] = base_key
                 f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        self._append_count = 0
+
+    def _append_entry(self, base_key: str) -> None:
+        """追加写入单条记录（O(1)）。调用方须持有 _lock。"""
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        obj = dict(self._data[base_key])
+        obj["cache_key"] = base_key
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        self._append_count += 1
+
+    def compact(self) -> None:
+        """主动整理文件，消除追加产生的冗余行。"""
+        with self._lock:
+            if self._append_count > 0:
+                self._save()
 
     def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
-        if base_key not in self._data:
-            return None
-        obj = self._data[base_key]
-        data_b64 = obj.get("data")
-        if not data_b64:
-            return None
-        df = pickle.loads(base64.b64decode(data_b64))
-        symbol = obj.get("symbol", "")
-        name = obj.get("name", "")
-        expire_at_str = obj.get("expire_at")
-        expire_at = pd.to_datetime(expire_at_str) if expire_at_str else None
-        return (symbol, name, df, expire_at)
+        with self._lock:
+            if base_key not in self._data:
+                return None
+            obj = self._data[base_key]
+            data_b64 = obj.get("data")
+            if not data_b64:
+                return None
+            df = pickle.loads(base64.b64decode(data_b64))
+            symbol = obj.get("symbol", "")
+            name = obj.get("name", "")
+            expire_at_str = obj.get("expire_at")
+            expire_at = pd.to_datetime(expire_at_str) if expire_at_str else None
+            return (symbol, name, df, expire_at)
 
     def put(
         self,
@@ -196,7 +222,7 @@ class JsonlBackend:
         expire_at: Optional[pd.Timestamp],
     ) -> None:
         data_b64 = base64.b64encode(pickle.dumps(df)).decode("ascii")
-        self._data[base_key] = {
+        entry = {
             "cache_key": base_key,
             "symbol": symbol,
             "name": name,
@@ -208,19 +234,25 @@ class JsonlBackend:
             "updated_at": pd.Timestamp.now().isoformat(),
             "expire_at": expire_at.isoformat() if expire_at else None,
         }
-        self._save()
+        with self._lock:
+            self._data[base_key] = entry
+            self._append_entry(base_key)
 
     def delete(self, base_key: str) -> None:
-        if base_key in self._data:
-            del self._data[base_key]
-            self._save()
+        with self._lock:
+            if base_key in self._data:
+                del self._data[base_key]
+                self._save()
 
     def clear(self) -> None:
-        self._data.clear()
-        self._save()
+        with self._lock:
+            self._data.clear()
+            self._save()
 
     def close(self) -> None:
-        pass  # 无长连接，可选再调用 _save() 一次
+        with self._lock:
+            if self._append_count > 0:
+                self._save()
 
 
 # ---------- 默认实现：按市场分片 JSONL ----------
@@ -303,6 +335,11 @@ class MarketJsonlBackend:
         for backend in self._backends.values():
             backend.clear()
 
+    def compact(self) -> None:
+        """整理所有市场的 JSONL 文件，消除追加产生的冗余行。"""
+        for backend in self._backends.values():
+            backend.compact()
+
     def close(self) -> None:
         for backend in self._backends.values():
             backend.close()
@@ -310,41 +347,32 @@ class MarketJsonlBackend:
     def status_rows(self, symbols: Optional[list[str]] = None) -> list[dict[str, Any]]:
         target_set = set(symbols) if symbols else None
         rows: list[dict[str, Any]] = []
-        for market, path in self.market_paths.items():
-            p = Path(path)
-            if not p.exists():
-                continue
-            with p.open("r", encoding="utf-8") as f:
-                for line in f:
-                    s = line.strip()
-                    if not s:
-                        continue
+        for market, backend in self._backends.items():
+            with backend._lock:
+                data_snapshot = dict(backend._data)
+            for base_key, obj in data_snapshot.items():
+                symbol = obj.get("symbol")
+                if not symbol:
+                    continue
+                if target_set is not None and symbol not in target_set:
+                    continue
+                payload = obj.get("data")
+                nrows = -1
+                if payload:
                     try:
-                        obj = json.loads(s)
+                        df = pickle.loads(base64.b64decode(payload))
+                        nrows = len(df)
                     except Exception:
-                        continue
-                    symbol = obj.get("symbol")
-                    if not symbol:
-                        continue
-                    if target_set is not None and symbol not in target_set:
-                        continue
-                    payload = obj.get("data")
-                    nrows = -1
-                    if payload:
-                        try:
-                            df = pickle.loads(base64.b64decode(payload))
-                            nrows = len(df)
-                        except Exception:
-                            nrows = -1
-                    rows.append(
-                        {
-                            "market": market,
-                            "symbol": symbol,
-                            "earliest_date": obj.get("earliest_date"),
-                            "latest_date": obj.get("latest_date"),
-                            "rows": nrows,
-                        }
-                    )
+                        nrows = -1
+                rows.append(
+                    {
+                        "market": market,
+                        "symbol": symbol,
+                        "earliest_date": obj.get("earliest_date"),
+                        "latest_date": obj.get("latest_date"),
+                        "rows": nrows,
+                    }
+                )
         rows.sort(key=lambda x: x["symbol"])
         return rows
 
