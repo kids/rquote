@@ -255,6 +255,98 @@ class JsonlBackend:
                 self._save()
 
 
+# ---------- JSONL 懒加载：按 key 用 offset 读行，不整文件进内存 ----------
+
+class JsonlBackendLazy:
+    """
+    只读 JSONL 后端：启动时只建 key -> (offset, length, earliest_date, latest_date) 索引，
+    get_raw(key) 时再按 offset 读那一行并解析。适用于大文件、只读场景，常驻内存约 O(条数) 而非 O(文件大小)。
+    put/delete/clear 为 no-op（只读）。
+    """
+
+    def __init__(self, path: str):
+        self.path = Path(path)
+        self._index: dict[str, Tuple[int, int, Optional[str], Optional[str]]] = {}
+        self._build_index()
+
+    def _build_index(self) -> None:
+        """扫描文件建立 key -> (offset, length, earliest_date, latest_date)。"""
+        if not self.path.exists():
+            return
+        self._index = {}
+        with open(self.path, "rb") as f:
+            while True:
+                offset = f.tell()
+                line = f.readline()
+                if not line:
+                    break
+                line_len = len(line)
+                try:
+                    obj = json.loads(line.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                key = obj.get("cache_key")
+                if not key:
+                    continue
+                self._index[key] = (
+                    offset,
+                    line_len,
+                    obj.get("earliest_date"),
+                    obj.get("latest_date"),
+                )
+
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+        if base_key not in self._index:
+            return None
+        offset, length, _, _ = self._index[base_key]
+        try:
+            with open(self.path, "rb") as f:
+                f.seek(offset)
+                raw = f.read(length)
+            obj = json.loads(raw.decode("utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        data_b64 = obj.get("data")
+        if not data_b64:
+            return None
+        try:
+            df = pickle.loads(base64.b64decode(data_b64))
+        except Exception:
+            return None
+        symbol = obj.get("symbol", "")
+        name = obj.get("name", "")
+        expire_at_str = obj.get("expire_at")
+        expire_at = pd.to_datetime(expire_at_str) if expire_at_str else None
+        return (symbol, name, df, expire_at)
+
+    def put(
+        self,
+        base_key: str,
+        symbol: str,
+        name: str,
+        df: pd.DataFrame,
+        earliest_date: Optional[str],
+        latest_date: Optional[str],
+        freq: str,
+        fq: str,
+        expire_at: Optional[pd.Timestamp],
+    ) -> None:
+        # 只读后端，忽略写入
+        pass
+
+    def delete(self, base_key: str) -> None:
+        pass
+
+    def clear(self) -> None:
+        pass
+
+    def compact(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
 # ---------- 默认实现：按市场分片 JSONL ----------
 
 class MarketJsonlBackend:
@@ -264,12 +356,14 @@ class MarketJsonlBackend:
     - hk -> 港股
     - us -> 美股
     - fu -> 期货
+    - backend_class: 每个市场使用的后端类，默认 JsonlBackend；传 JsonlBackendLazy 则按 key 按行读、不整文件进内存。
     """
 
     def __init__(
         self,
         market_paths: Optional[dict[str, str]] = None,
         route_fn: Optional[Callable[[str], str]] = None,
+        backend_class: type = JsonlBackend,
     ):
         home = Path.home()
         cache_dir = home / ".rquote"
@@ -281,7 +375,7 @@ class MarketJsonlBackend:
             "fu": str(cache_dir / "cache_fu.jsonl"),
         }
         self._route_fn = route_fn or self._default_route
-        self._backends = {m: JsonlBackend(p) for m, p in self.market_paths.items()}
+        self._backends = {m: backend_class(p) for m, p in self.market_paths.items()}
         self._fallback_market = "cn"
 
     @staticmethod
@@ -348,6 +442,22 @@ class MarketJsonlBackend:
         target_set = set(symbols) if symbols else None
         rows: list[dict[str, Any]] = []
         for market, backend in self._backends.items():
+            if hasattr(backend, "_index"):
+                for base_key, entry in backend._index.items():
+                    offset, length, earliest, latest = entry
+                    symbol = base_key.split(":")[0] if ":" in base_key else base_key
+                    if target_set is not None and symbol not in target_set:
+                        continue
+                    rows.append(
+                        {
+                            "market": market,
+                            "symbol": symbol,
+                            "earliest_date": earliest,
+                            "latest_date": latest,
+                            "rows": -1,
+                        }
+                    )
+                continue
             with backend._lock:
                 data_snapshot = dict(backend._data)
             for base_key, obj in data_snapshot.items():

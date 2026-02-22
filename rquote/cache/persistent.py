@@ -37,7 +37,8 @@ def create_persistent_cache(
         backend: 存储后端名称，支持 "sqlite" | "jsonl" | "pickle"
         path: 存储路径（文件或目录），默认 ~/.rquote/cache.{db|jsonl|pkl}
         ttl: 默认过期时间（秒），None 表示不过期
-        **kwargs: 传给具体后端构造函数的额外参数
+        **kwargs: 传给具体后端构造函数的额外参数。jsonl 时支持 lazy=True：
+            为 True 时使用 JsonlBackendLazy，按 key 按 offset 读行，不整文件进内存（只读）。
 
     Returns:
         PersistentCache 实例
@@ -56,6 +57,7 @@ def create_persistent_cache(
     elif backend == "jsonl":
         market_paths = kwargs.get("market_paths")
         route_fn = kwargs.get("route_fn")
+        lazy = kwargs.get("lazy", False)
         if market_paths is None and path:
             p = Path(path)
             if p.suffix:
@@ -70,7 +72,10 @@ def create_persistent_cache(
                 "us": str(base_dir / f"{prefix}_us.jsonl"),
                 "fu": str(base_dir / f"{prefix}_fu.jsonl"),
             }
-        backend_instance = storage.MarketJsonlBackend(market_paths=market_paths, route_fn=route_fn)
+        backend_class = storage.JsonlBackendLazy if lazy else storage.JsonlBackend
+        backend_instance = storage.MarketJsonlBackend(
+            market_paths=market_paths, route_fn=route_fn, backend_class=backend_class
+        )
     elif backend == "pickle":
         backend_instance = storage.PickleBackend(path)
     else:
