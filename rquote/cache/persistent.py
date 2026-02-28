@@ -34,7 +34,7 @@ def create_persistent_cache(
     工厂：按名称创建持久化缓存。
 
     Args:
-        backend: 存储后端名称，支持 "sqlite" | "jsonl" | "pickle"
+        backend: 存储后端名称，支持 "sqlite" | "jsonl" | "pickle" | "per_key_json"
         path: 存储路径（文件或目录），默认 ~/.rquote/cache.{db|jsonl|pkl}
         ttl: 默认过期时间（秒），None 表示不过期
         **kwargs: 传给具体后端构造函数的额外参数。jsonl 时支持 lazy=True：
@@ -48,8 +48,11 @@ def create_persistent_cache(
     cache_dir.mkdir(exist_ok=True)
 
     if path is None:
-        ext = {"sqlite": "db", "jsonl": "jsonl", "pickle": "pkl"}.get(backend, "db")
-        path = str(cache_dir / f"cache.{ext}")
+        if backend == "per_key_json":
+            path = str(cache_dir / "cache_json")
+        else:
+            ext = {"sqlite": "db", "jsonl": "jsonl", "pickle": "pkl"}.get(backend, "db")
+            path = str(cache_dir / f"cache.{ext}")
 
     backend_instance: storage.StorageBackend
     if backend == "sqlite":
@@ -78,8 +81,10 @@ def create_persistent_cache(
         )
     elif backend == "pickle":
         backend_instance = storage.PickleBackend(path)
+    elif backend == "per_key_json":
+        backend_instance = storage.PerKeyJsonBackend(path)
     else:
-        raise ValueError(f"不支持的 backend: {backend!r}，可选: sqlite, jsonl, pickle")
+        raise ValueError(f"不支持的 backend: {backend!r}，可选: sqlite, jsonl, pickle, per_key_json")
 
     return PersistentCache(backend=backend_instance, ttl=ttl)
 
@@ -248,7 +253,7 @@ class PersistentCache(Cache):
         symbol, name, df = value
         if not isinstance(df, pd.DataFrame) or df.empty:
             return
-        logger.info(f"[CACHE PUT] key={key}, 数据行数={len(df)}, 日期范围={df.index.min()} 到 {df.index.max()}")
+        logger.debug(f"[CACHE PUT] key={key}, 数据行数={len(df)}, 日期范围={df.index.min()} 到 {df.index.max()}")
         if not isinstance(df.index, pd.DatetimeIndex):
             try:
                 df.index = pd.to_datetime(df.index)
@@ -279,7 +284,7 @@ class PersistentCache(Cache):
         if ttl or self.ttl:
             expire_at = pd.Timestamp.now() + pd.Timedelta(seconds=(ttl or self.ttl))
         self._backend.put(base_key, symbol, name, df, earliest_str, latest_str, freq, fq, expire_at)
-        logger.info(f"[CACHE PUT] 存储完成, base_key={base_key}, 日期范围={earliest_str} 到 {latest_str}")
+        logger.debug(f"[CACHE PUT] 存储完成, base_key={base_key}, 日期范围={earliest_str} 到 {latest_str}")
 
     def delete(self, key: str) -> None:
         symbol, _, _, freq, fq = self._extract_key_parts(key)

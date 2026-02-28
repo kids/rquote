@@ -149,6 +149,7 @@ class JsonlBackend:
         self._data: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._append_count = 0
+        self._batch_mode = False
         self._load()
 
     def _load(self) -> None:
@@ -187,6 +188,17 @@ class JsonlBackend:
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
         self._append_count += 1
+
+    def set_batch_mode(self, on: bool) -> None:
+        """批量模式：为 True 时 put 只更新内存不追加写文件，结束时需调用 flush_batch()。"""
+        self._batch_mode = on
+
+    def flush_batch(self) -> None:
+        """结束批量模式并一次性写盘（整文件重写）。"""
+        with self._lock:
+            if self._batch_mode or self._append_count > 0:
+                self._save()
+            self._batch_mode = False
 
     def compact(self) -> None:
         """主动整理文件，消除追加产生的冗余行。"""
@@ -236,7 +248,8 @@ class JsonlBackend:
         }
         with self._lock:
             self._data[base_key] = entry
-            self._append_entry(base_key)
+            if not self._batch_mode:
+                self._append_entry(base_key)
 
     def delete(self, base_key: str) -> None:
         with self._lock:
@@ -429,6 +442,18 @@ class MarketJsonlBackend:
         for backend in self._backends.values():
             backend.clear()
 
+    def set_batch_mode(self, on: bool) -> None:
+        """批量模式：为 True 时 put 只更新内存不追加写文件，结束时需调用 flush_batch()。"""
+        for backend in self._backends.values():
+            if hasattr(backend, "set_batch_mode"):
+                backend.set_batch_mode(on)
+
+    def flush_batch(self) -> None:
+        """结束批量模式并一次性写盘。"""
+        for backend in self._backends.values():
+            if hasattr(backend, "flush_batch"):
+                backend.flush_batch()
+
     def compact(self) -> None:
         """整理所有市场的 JSONL 文件，消除追加产生的冗余行。"""
         for backend in self._backends.values():
@@ -555,3 +580,126 @@ class PickleBackend:
 
     def close(self) -> None:
         pass
+
+
+# ---------- 每 key 一 JSON 文件（不区分市场） ----------
+
+def _base_key_to_filename(base_key: str) -> str:
+    """base_key 如 sz000001:day:qfq -> sz000001_day_qfq.json"""
+    return base_key.replace(":", "_") + ".json"
+
+
+class PerKeyJsonBackend:
+    """
+    每 key 一个 JSON 文件，不区分市场。
+    初始化参数 path 为所有 JSON 文件所在的目录地址。
+    文件名规则：base_key 中 : 替换为 _，如 sz000001:day:qfq -> sz000001_day_qfq.json
+    """
+
+    def __init__(self, path: str):
+        self.root = Path(path)
+
+    def _path_for(self, base_key: str) -> Path:
+        return self.root / _base_key_to_filename(base_key)
+
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+        p = self._path_for(base_key)
+        if not p.exists():
+            return None
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                obj = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return None
+        data_b64 = obj.get("data")
+        if not data_b64:
+            return None
+        try:
+            df = pickle.loads(base64.b64decode(data_b64))
+        except Exception:
+            return None
+        symbol = obj.get("symbol", "")
+        name = obj.get("name", "")
+        expire_at_str = obj.get("expire_at")
+        expire_at = pd.to_datetime(expire_at_str) if expire_at_str else None
+        return (symbol, name, df, expire_at)
+
+    def put(
+        self,
+        base_key: str,
+        symbol: str,
+        name: str,
+        df: pd.DataFrame,
+        earliest_date: Optional[str],
+        latest_date: Optional[str],
+        freq: str,
+        fq: str,
+        expire_at: Optional[pd.Timestamp],
+    ) -> None:
+        data_b64 = base64.b64encode(pickle.dumps(df)).decode("ascii")
+        obj = {
+            "cache_key": base_key,
+            "symbol": symbol,
+            "name": name,
+            "data": data_b64,
+            "earliest_date": earliest_date,
+            "latest_date": latest_date,
+            "freq": freq,
+            "fq": fq,
+            "updated_at": pd.Timestamp.now().isoformat(),
+            "expire_at": expire_at.isoformat() if expire_at else None,
+        }
+        self.root.mkdir(parents=True, exist_ok=True)
+        p = self._path_for(base_key)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+
+    def delete(self, base_key: str) -> None:
+        p = self._path_for(base_key)
+        if p.exists():
+            p.unlink()
+
+    def clear(self) -> None:
+        if not self.root.exists():
+            return
+        for p in self.root.glob("*.json"):
+            p.unlink()
+
+    def close(self) -> None:
+        pass
+
+    def status_rows(self, symbols: Optional[list[str]] = None) -> list[dict[str, Any]]:
+        target_set = set(symbols) if symbols else None
+        rows: list[dict[str, Any]] = []
+        if not self.root.exists():
+            return rows
+        for p in self.root.glob("*.json"):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    obj = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                continue
+            symbol = obj.get("symbol")
+            if not symbol:
+                symbol = obj.get("cache_key", "").split(":")[0]
+            if target_set is not None and symbol not in target_set:
+                continue
+            payload = obj.get("data")
+            nrows = -1
+            if payload:
+                try:
+                    df = pickle.loads(base64.b64decode(payload))
+                    nrows = len(df)
+                except Exception:
+                    pass
+            rows.append(
+                {
+                    "market": "",
+                    "symbol": symbol,
+                    "earliest_date": obj.get("earliest_date"),
+                    "latest_date": obj.get("latest_date"),
+                    "rows": nrows,
+                }
+            )
+        rows.sort(key=lambda x: x["symbol"])
+        return rows

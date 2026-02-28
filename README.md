@@ -4,7 +4,7 @@
 
 ## 版本信息
 
-当前版本：**0.5.9**
+当前版本：**0.7.0**
 
 ## 主要特性
 
@@ -83,9 +83,10 @@ uv pip install "rquote[persistent]"
 ```python
 from rquote import get_price, create_persistent_cache
 
-# 按后端名称创建，默认路径为 ~/.rquote/cache.{db|jsonl|pkl}
+# 按后端名称创建，默认路径为 ~/.rquote/cache.{db|jsonl|pkl|cache_json}
 cache = create_persistent_cache(backend='sqlite')
 cache = create_persistent_cache(backend='jsonl', path='/tmp/cache.jsonl')  # 需过期可传 ttl=86400（秒）
+cache = create_persistent_cache(backend='per_key_json', path='/data/daily')  # 每 key 一 JSON 文件，path 为目录
 
 # 使用缓存
 sid, name, df = get_price('sh000001', dd=cache)
@@ -108,16 +109,18 @@ cache.close()
 - ✅ 智能数据合并：相同股票的数据会自动合并，key 不包含日期范围
 - ✅ 智能扩展：当请求的日期范围超出缓存时，自动扩展并合并数据
 - ✅ 支持 TTL：可设置缓存过期时间
-- ✅ 多后端：sqlite / jsonl / pickle，均为标准库、无额外依赖，见下方选择维度
+- ✅ 多后端：sqlite / jsonl / pickle / per_key_json，均为标准库、无额外依赖，见下方选择维度
 
 **后端选择维度**
 
-| 维度 | sqlite | jsonl | pickle |
-|------|--------|--------|--------|
-| **依赖** | 标准库，无额外依赖 | 标准库，无额外依赖 | 标准库 |
-| **内存占用** | 低（按需从文件读） | 低（按需从文件读） | 高（整库常驻内存） |
-| **写入方式** | 单文件、随机写 | 单文件、整文件重写 | 单文件、整库序列化 |
-| **适用场景** | 通用、嵌入式、内存紧张 | 通用、可读性好、内存紧张 | 兼容旧版、小数据量 |
+| 维度 | sqlite | jsonl | pickle | per_key_json |
+|------|--------|--------|--------|--------------|
+| **依赖** | 标准库，无额外依赖 | 标准库，无额外依赖 | 标准库 | 标准库 |
+| **内存占用** | 低（按需从文件读） | 低（按需从文件读） | 高（整库常驻内存） | 低（按 key 读单文件） |
+| **写入方式** | 单文件、随机写 | 单文件、整文件重写 | 单文件、整库序列化 | 每 key 一 JSON 文件 |
+| **适用场景** | 通用、嵌入式、内存紧张 | 通用、可读性好、批量快更 | 兼容旧版、小数据量 | 单 key 更新、并发友好、不区分市场 |
+
+**per_key_json**：每个 key 对应一个独立 JSON 文件，初始化 `path` 为所有 JSON 文件所在目录。文件名规则：`base_key` 中 `:` 替换为 `_`，如 `sz000001:day:qfq` → `sz000001_day_qfq.json`。不区分市场，适合单标的面更新、并发写入。
 
 **内存有限时的建议：**
 - **优先使用 `sqlite` 或 `jsonl`**：两者都不会把整份缓存加载进内存，按 key 读写，适合本机内存紧张、树莓派或容器环境。
