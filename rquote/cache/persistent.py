@@ -287,10 +287,16 @@ class PersistentCache(Cache):
 
         is_weekend = today.weekday() >= 5
         is_weekly_market = str(symbol or "").lower().startswith(("sh", "sz", "hk", "us"))
-        skip_forward_non_trading_day = is_weekend and is_weekly_market
+        # 周末休市不扩展的前提：数据已更新到上一交易日
+        if today.weekday() == 6:  # Sunday
+            prev_trading_day = today - datetime.timedelta(days=2)  # Friday
+        else:
+            prev_trading_day = today - datetime.timedelta(days=1)
+        cache_up_to_prev_td = cache_latest is not None and cache_latest >= prev_trading_day
+        skip_forward_non_trading_day = is_weekend and is_weekly_market and cache_up_to_prev_td
 
         if skip_forward_non_trading_day:
-            logger.info(f"[PRICE AUTO FORWARD] skip on weekend for symbol={symbol}, today={today}")
+            logger.info(f"[PRICE AUTO FORWARD] skip on weekend (cache up to {prev_trading_day}) for symbol={symbol}, today={today}")
 
         if (
             request_edate is not None
@@ -313,6 +319,39 @@ class PersistentCache(Cache):
                 if not fetched_records:
                     logger.info("[PRICE AUTO FORWARD] fetched empty, stop")
                     break
+                # API 可能只返回最近 days 条，导致 extend_sdate 到 fetched_earliest 之间出现 gap，需循环补齐
+                gap_sdate = extend_sdate
+                gap_fetched_records = fetched_records  # 当前「fetched」段，其 earliest 为 gap 的右边界
+                for _ in range(max_extend_iterations):
+                    fetched_earliest_str, _ = DateRangeUtils.get_date_range(gap_fetched_records, date_key)
+                    gap_sdate_parsed = DateRangeUtils.parse_date(gap_sdate)
+                    fetched_earliest_parsed = DateRangeUtils.parse_date(fetched_earliest_str)
+                    if (
+                        gap_sdate_parsed is None
+                        or fetched_earliest_parsed is None
+                        or fetched_earliest_parsed <= gap_sdate_parsed
+                    ):
+                        break
+                    gap_edate_str = DateRangeUtils.add_days(fetched_earliest_str, -1)
+                    logger.info(
+                        f"[PRICE AUTO FORWARD] gap detected, fill {gap_sdate}..{gap_edate_str} "
+                        f"(fetched earliest={fetched_earliest_str})"
+                    )
+                    gap_fetched = fetch_func(symbol, gap_sdate, gap_edate_str, freq, days, fq)
+                    _, _, gap_records = gap_fetched
+                    if not gap_records:
+                        break
+                    self.put(base_key, gap_fetched)
+                    refreshed = _get_full_cached()
+                    if not refreshed:
+                        break
+                    _, _, full_records = refreshed
+                    gap_earliest_str, _ = DateRangeUtils.get_date_range(gap_records, date_key)
+                    gap_earliest_parsed = DateRangeUtils.parse_date(gap_earliest_str)
+                    if gap_earliest_parsed is None or gap_earliest_parsed <= gap_sdate_parsed:
+                        break
+                    # 下次仍从 gap_sdate 起填，右边界为本次 gap_records 的 earliest - 1
+                    gap_fetched_records = gap_records
                 self.put(base_key, fetched)
                 refreshed = _get_full_cached()
                 if not refreshed:
