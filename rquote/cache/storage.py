@@ -6,6 +6,27 @@ from __future__ import annotations
 
 import datetime
 import json
+
+try:
+    import orjson
+    _ORJSON = orjson
+except ImportError:
+    _ORJSON = None
+
+
+def _json_load_path(p: Path) -> Optional[dict]:
+    """从路径读 JSON，有 orjson 时优先用 orjson 加速。"""
+    try:
+        with open(p, "rb") as f:
+            raw = f.read()
+    except OSError:
+        return None
+    try:
+        if _ORJSON is not None:
+            return _ORJSON.loads(raw)
+        return json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, ValueError):
+        return None
 import pickle
 import sqlite3
 import threading
@@ -524,10 +545,8 @@ class PerKeyJsonBackend:
         p = self._path_for(base_key)
         if not p.exists():
             return None
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                obj = json.load(f)
-        except (OSError, json.JSONDecodeError):
+        obj = _json_load_path(p)
+        if obj is None:
             return None
         records = obj.get("records") or obj.get("data", [])
         if not isinstance(records, list):
@@ -587,10 +606,8 @@ class PerKeyJsonBackend:
         if not self.root.exists():
             return rows
         for p in self.root.glob("*.json"):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    obj = json.load(f)
-            except (OSError, json.JSONDecodeError):
+            obj = _json_load_path(p)
+            if obj is None:
                 continue
             symbol = obj.get("symbol")
             if not symbol:

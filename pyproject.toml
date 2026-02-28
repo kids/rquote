@@ -14,3 +14,4 @@ dependencies = [
 [project.optional-dependencies]
 persistent = []  # 持久化缓存仅用标准库（sqlite/jsonl/pickle），无额外依赖
 dataframe = ["pandas>=1.0.0"]
+orjson = ["orjson>=3.9.0"]  # 若安装则 per_key_json 读缓存用 orjson 加速
