@@ -4,7 +4,7 @@
 
 ## 版本信息
 
-当前版本：**0.6.2**
+当前版本：**0.6.3**
 
 ## 主要特性
 
@@ -32,6 +32,12 @@ uv pip install rquote
 
 ```bash
 pip install "rquote[dataframe]"
+```
+
+**安装 orjson 加速（可选，per_key_json 读缓存时自动启用，解析更快）：**
+
+```bash
+pip install "rquote[orjson]"
 ```
 
 ## 快速开始
@@ -131,7 +137,7 @@ cache.close()
 | **写入方式** | 单文件、随机写 | 单文件、整文件重写 | 单文件、整库序列化 | 每 key 一 JSON 文件 |
 | **适用场景** | 通用、嵌入式、内存紧张 | 通用、可读性好、批量快更 | 兼容旧版、小数据量 | 单 key 更新、并发友好、不区分市场 |
 
-**per_key_json**：每个 key 对应一个独立 JSON 文件，初始化 `path` 为所有 JSON 文件所在目录。文件名规则：`base_key` 中 `:` 替换为 `_`，如 `sz000001:day:qfq` → `sz000001_day_qfq.json`。不区分市场，适合单标的面更新、并发写入。
+**per_key_json**：每个 key 对应一个独立 JSON 文件，初始化 `path` 为所有 JSON 文件所在目录。文件名规则：`base_key` 中 `:` 替换为 `_`，如 `sz000001:day:qfq` → `sz000001_day_qfq.json`。不区分市场，适合单标的面更新、并发写入。若环境已安装 `orjson`（`pip install rquote[orjson]`），读 JSON 时自动使用 orjson 加速。
 
 **内存有限时的建议：**
 - **优先使用 `sqlite` 或 `jsonl`**：两者都不会把整份缓存加载进内存，按 key 读写，适合本机内存紧张、树莓派或容器环境。
@@ -524,6 +530,12 @@ b = BasicFactors()  # 可导入，空壳类，无方法
 ## 架构改进
 
 ### 新版本改进
+
+**v0.6.3** 主要改进：
+
+1. **per_key_json 支持 orjson 加速**（可选）
+   - 若安装 `pip install rquote[orjson]`，per_key_json 读缓存时自动用 orjson 替代标准库 json，解析速度更快
+   - 未安装 orjson 时自动回退到标准库，无行为变化
 
 **v0.6.2** 主要改进：
 
