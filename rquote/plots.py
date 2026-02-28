@@ -21,13 +21,13 @@ class PlotUtils:
                         spikemode = 'toaxis+across+marker',
                         ),
         )
-        
+
         dt = []
         icolor, dcolor = 'red', 'green'
-        _, n, v = get_price(i, sdate=sdate, edate=edate)
+        _, n, v = get_price(i, sdate=sdate, edate=edate, as_dataframe=True)
         v = (v - v.low.min()) * 10 / (v.high.max() - v.low.min()) + 2
         v = v.round(3) # compress html data
-        
+
         dt += [
                 go.Candlestick(
                         x=v.index.to_series(),
@@ -42,15 +42,15 @@ class PlotUtils:
                         decreasing={'line':{'color':dcolor}}
                         ),
             ]
-        
+
         if vol:
             vvol = v.vol / v.vol.max()
             vvol *= 2
             dt += [go.Bar(x = v.index.to_series(), y=vvol, name='vol', opacity=0.5)]
-            
+
         icolor, dcolor = 'cyan', 'gray'
         if dsh:
-            _, _, dsh = get_price('sh000001', sdate=sdate, edate=edate)
+            _, _, dsh = get_price('sh000001', sdate=sdate, edate=edate, as_dataframe=True)
             dsh = (dsh / dsh.iloc[0,0] - 1) * 10
             dt += [
                     go.Candlestick(
@@ -66,6 +66,5 @@ class PlotUtils:
                             decreasing={'line':{'color':dcolor}}
                             ),
                 ]
-            
-        return dt, layout
 
+        return dt, layout

@@ -1,18 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 持久化缓存实现：基于存储后端协议，通过工厂创建。
-
-使用方式：
-  - 推荐：cache = create_persistent_cache(backend="sqlite", path=..., ttl=...)
-  - 或：   cache = PersistentCache(backend=my_backend, ttl=...)
-  - 兼容旧：cache = PersistentCache(db_path=..., use_duckdb=True, ttl=...)  # use_duckdb=True 即 sqlite
 """
 from __future__ import annotations
 
+import datetime
 from pathlib import Path
-from typing import Optional, Any, Tuple, Callable
-import pandas as pd
+from typing import Optional, Any, Tuple, Callable, List, Dict
+
 from .base import Cache
+from ..utils.date import DateRangeUtils
 
 try:
     from ..utils.logging import logger
@@ -20,7 +17,6 @@ except ImportError:
     import logging
     logger = logging.getLogger(__name__)
 
-# 延迟导入，避免循环依赖；工厂里再取 backends
 from . import storage
 
 
@@ -30,19 +26,6 @@ def create_persistent_cache(
     ttl: Optional[int] = None,
     **kwargs: Any,
 ) -> "PersistentCache":
-    """
-    工厂：按名称创建持久化缓存。
-
-    Args:
-        backend: 存储后端名称，支持 "sqlite" | "jsonl" | "pickle" | "per_key_json"
-        path: 存储路径（文件或目录），默认 ~/.rquote/cache.{db|jsonl|pkl}
-        ttl: 默认过期时间（秒），None 表示不过期
-        **kwargs: 传给具体后端构造函数的额外参数。jsonl 时支持 lazy=True：
-            为 True 时使用 JsonlBackendLazy，按 key 按 offset 读行，不整文件进内存（只读）。
-
-    Returns:
-        PersistentCache 实例
-    """
     home = Path.home()
     cache_dir = home / ".rquote"
     cache_dir.mkdir(exist_ok=True)
@@ -99,20 +82,10 @@ class PersistentCache(Cache):
         use_duckdb: bool = True,
         ttl: Optional[int] = None,
     ):
-        """
-        初始化持久化缓存。
-
-        Args:
-            backend: 存储后端实例（与 db_path/use_duckdb 二选一）
-            db_path: 兼容旧 API，数据库/文件路径
-            use_duckdb: 兼容旧 API，True 使用 sqlite，False 使用 pickle
-            ttl: 默认过期时间（秒），None 表示不过期
-        """
         self.ttl = ttl
         if backend is not None:
             self._backend = backend
             return
-        # 兼容旧：PersistentCache(db_path=..., use_duckdb=...)，use_duckdb=True 即 sqlite
         home = Path.home()
         cache_dir = home / ".rquote"
         cache_dir.mkdir(exist_ok=True)
@@ -137,55 +110,6 @@ class PersistentCache(Cache):
     def _get_base_key(self, symbol: str, freq: str, fq: str) -> str:
         return f"{symbol}:{freq}:{fq}"
 
-    def _parse_date(self, date_str: str) -> Optional[pd.Timestamp]:
-        if not date_str:
-            return None
-        try:
-            return pd.to_datetime(date_str)
-        except Exception:
-            return None
-
-    def _get_dataframe_date_range(self, df: pd.DataFrame) -> Tuple[Optional[pd.Timestamp], Optional[pd.Timestamp]]:
-        if df.empty:
-            return None, None
-        if not isinstance(df.index, pd.DatetimeIndex):
-            try:
-                index = pd.to_datetime(df.index)
-                if len(index) > 0:
-                    return index.min(), index.max()
-            except (ValueError, TypeError):
-                pass
-            return None, None
-        return df.index.min(), df.index.max()
-
-    def _filter_dataframe_by_date(
-        self,
-        df: pd.DataFrame,
-        sdate: Optional[str] = None,
-        edate: Optional[str] = None,
-    ) -> pd.DataFrame:
-        if df.empty or not isinstance(df.index, pd.DatetimeIndex):
-            return df
-        start_date = self._parse_date(sdate) if sdate else None
-        end_date = self._parse_date(edate) if edate else None
-        if start_date is not None and end_date is not None:
-            mask = (df.index >= start_date) & (df.index <= end_date)
-            return df[mask]
-        if start_date is not None:
-            return df[df.index >= start_date]
-        if end_date is not None:
-            return df[df.index <= end_date]
-        return df
-
-    def _merge_dataframes(self, df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
-        if df1.empty:
-            return df2
-        if df2.empty:
-            return df1
-        combined = pd.concat([df1, df2])
-        combined = combined[~combined.index.duplicated(keep="last")]
-        return combined.sort_index()
-
     def get(self, key: str, sdate: Optional[str] = None, edate: Optional[str] = None) -> Optional[Any]:
         parts = key.split(":")
         if len(parts) == 3:
@@ -202,8 +126,9 @@ class PersistentCache(Cache):
         logger.info(f"[CACHE GET] key={key}, base_key={base_key}, sdate={sdate}, edate={edate}")
         result = self._get_via_backend(base_key, symbol, sdate, edate, freq, fq)
         if result:
-            _, _, df = result
-            logger.info(f"[CACHE HIT] key={key}, 返回数据行数={len(df)}, 日期范围={df.index.min()} 到 {df.index.max()}")
+            _, _, records = result
+            earliest, latest = DateRangeUtils.get_date_range(records)
+            logger.info(f"[CACHE HIT] key={key}, 返回数据行数={len(records)}, 日期范围={earliest} 到 {latest}")
         else:
             logger.info(f"[CACHE MISS] key={key}, 缓存中无数据")
         return result
@@ -216,49 +141,49 @@ class PersistentCache(Cache):
         edate: str,
         freq: str,
         fq: str,
-    ) -> Optional[Tuple[str, str, pd.DataFrame]]:
+    ) -> Optional[Tuple[str, str, List[Dict]]]:
         raw = self._backend.get_raw(base_key)
         if not raw:
             return None
-        symbol_out, name, df, expire_at = raw
-        if self.ttl and expire_at is not None and pd.Timestamp.now() > expire_at:
+        symbol_out, name, records, expire_at = raw
+        if self.ttl and expire_at is not None and datetime.datetime.now() > expire_at:
             self.delete(base_key)
             return None
-        if not isinstance(df.index, pd.DatetimeIndex):
-            try:
-                df.index = pd.to_datetime(df.index)
-            except (ValueError, TypeError):
-                return None
-        if df.empty:
+        if not records:
             return None
-        cached_earliest = df.index.min()
-        cached_latest = df.index.max()
-        request_sdate = self._parse_date(sdate) if sdate else None
-        request_edate = self._parse_date(edate) if edate else None
+
+        date_key = DateRangeUtils.detect_date_key(records)
+        cached_earliest_str, cached_latest_str = DateRangeUtils.get_date_range(records, date_key)
+        cached_earliest = DateRangeUtils.parse_date(cached_earliest_str)
+        cached_latest = DateRangeUtils.parse_date(cached_latest_str)
+
+        request_sdate = DateRangeUtils.parse_date(sdate) if sdate else None
+        request_edate = DateRangeUtils.parse_date(edate) if edate else None
+
         has_overlap = True
-        if request_edate is not None and request_edate < cached_earliest:
+        if request_edate is not None and cached_earliest is not None and request_edate < cached_earliest:
             has_overlap = False
-        if request_sdate is not None and request_sdate > cached_latest:
+        if request_sdate is not None and cached_latest is not None and request_sdate > cached_latest:
             has_overlap = False
         if not has_overlap:
             return None
-        filtered_df = self._filter_dataframe_by_date(df, sdate, edate)
-        if filtered_df.empty:
+
+        filtered = DateRangeUtils.filter_records(records, sdate, edate, date_key)
+        if not filtered:
             return None
-        return (symbol_out, name, filtered_df)
+        return (symbol_out, name, filtered)
 
     def put(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         if not isinstance(value, tuple) or len(value) != 3:
             return
-        symbol, name, df = value
-        if not isinstance(df, pd.DataFrame) or df.empty:
+        symbol, name, records = value
+        if not isinstance(records, list) or not records:
             return
-        logger.debug(f"[CACHE PUT] key={key}, 数据行数={len(df)}, 日期范围={df.index.min()} 到 {df.index.max()}")
-        if not isinstance(df.index, pd.DatetimeIndex):
-            try:
-                df.index = pd.to_datetime(df.index)
-            except (ValueError, TypeError):
-                pass
+
+        date_key = DateRangeUtils.detect_date_key(records)
+        earliest_str, latest_str = DateRangeUtils.get_date_range(records, date_key)
+        logger.debug(f"[CACHE PUT] key={key}, 数据行数={len(records)}, 日期范围={earliest_str} 到 {latest_str}")
+
         parts = key.split(":")
         if len(parts) == 3:
             base_key = key
@@ -266,24 +191,19 @@ class PersistentCache(Cache):
         else:
             _, _, _, freq, fq = self._extract_key_parts(key)
             base_key = self._get_base_key(symbol, freq, fq)
+
         existing = self._backend.get_raw(base_key)
         if existing:
-            _, existing_name, existing_df, _ = existing
+            _, existing_name, existing_records, _ = existing
             if not name:
                 name = existing_name
-            df = self._merge_dataframes(existing_df, df)
-            if not isinstance(df.index, pd.DatetimeIndex):
-                try:
-                    df.index = pd.to_datetime(df.index)
-                except (ValueError, TypeError):
-                    pass
-        earliest_date, latest_date = self._get_dataframe_date_range(df)
-        earliest_str = earliest_date.strftime("%Y-%m-%d") if earliest_date else None
-        latest_str = latest_date.strftime("%Y-%m-%d") if latest_date else None
+            records = DateRangeUtils.merge_records(existing_records, records, date_key)
+            earliest_str, latest_str = DateRangeUtils.get_date_range(records, date_key)
+
         expire_at = None
         if ttl or self.ttl:
-            expire_at = pd.Timestamp.now() + pd.Timedelta(seconds=(ttl or self.ttl))
-        self._backend.put(base_key, symbol, name, df, earliest_str, latest_str, freq, fq, expire_at)
+            expire_at = datetime.datetime.now() + datetime.timedelta(seconds=(ttl or self.ttl))
+        self._backend.put(base_key, symbol, name, records, earliest_str, latest_str, freq, fq, expire_at)
         logger.debug(f"[CACHE PUT] 存储完成, base_key={base_key}, 日期范围={earliest_str} 到 {latest_str}")
 
     def delete(self, key: str) -> None:
@@ -321,21 +241,17 @@ class PersistentCache(Cache):
         freq: str,
         days: int,
         fq: str,
-        fetch_func: Callable[[str, str, str, str, int, str], Tuple[str, str, pd.DataFrame]],
+        fetch_func: Callable[[str, str, str, str, int, str], Tuple[str, str, List[Dict]]],
         min_rows_before_edate: int = 300,
         max_extend_iterations: int = 15,
-    ) -> Tuple[str, str, pd.DataFrame]:
+    ) -> Tuple[str, str, List[Dict]]:
         """
-        自动扩展并融合缓存数据：
-        - 请求日期晚于缓存最新：向前扩展并融合（若缓存已有今日/昨日则跳过）
-        - 请求日期过早或 edate 前数据不足：向后扩展并融合
-        - 融合统一通过 put() 完成（去重/排序/覆盖）
-        - 依赖后端读后即写：下一次 get() 必须能读到本次 put()，否则多轮会重复请求。
+        自动扩展并融合缓存数据。
         """
         base_key = self._get_base_key(symbol, freq, fq)
-        request_edate = self._parse_date(edate) if edate else None
+        request_edate = DateRangeUtils.parse_date(edate) if edate else None
 
-        def _get_full_cached() -> Optional[Tuple[str, str, pd.DataFrame]]:
+        def _get_full_cached() -> Optional[Tuple[str, str, List[Dict]]]:
             return self.get(base_key, sdate="", edate="")
 
         logger.info(
@@ -351,98 +267,104 @@ class PersistentCache(Cache):
             final_hit = self.get(base_key, sdate=sdate, edate=edate)
             return final_hit if final_hit else fetched
 
-        _, _, full_df = full_cached
-        if full_df.empty or not isinstance(full_df.index, pd.DatetimeIndex):
+        _, _, full_records = full_cached
+        if not full_records:
             fetched = fetch_func(symbol, sdate, edate, freq, days, fq)
             self.put(base_key, fetched)
             final_hit = self.get(base_key, sdate=sdate, edate=edate)
             return final_hit if final_hit else fetched
 
-        # 1) 前向扩展：仅当缓存最新早于请求 edate 且缓存非“已是最新”时才拉取
-        # 若请求 edate 为“未来/不限”（如 2099）且缓存已有今日或昨日，视为已是最新，不发起前向请求
-        cache_latest = full_df.index.max()
-        today_ts = pd.Timestamp.now().normalize()
-        try:
-            # 统一为 naive 再比较，避免 tz-aware 与 naive 比较异常
-            cl = cache_latest.tz_localize(None) if getattr(cache_latest, "tz", None) else cache_latest
-            req = request_edate.tz_localize(None) if getattr(request_edate, "tz", None) else request_edate
-            cache_fresh = cl >= (today_ts - pd.Timedelta(days=1))
-            request_is_future = req >= today_ts
-        except (TypeError, ValueError, AttributeError):
-            cache_fresh = False
-            request_is_future = False
-        is_weekend = today_ts.weekday() >= 5
+        date_key = DateRangeUtils.detect_date_key(full_records)
+
+        # 1) 前向扩展
+        _, cache_latest_str = DateRangeUtils.get_date_range(full_records, date_key)
+        cache_latest = DateRangeUtils.parse_date(cache_latest_str)
+        today = datetime.date.today()
+        yesterday = today - datetime.timedelta(days=1)
+
+        cache_fresh = cache_latest is not None and cache_latest >= yesterday
+        request_is_future = request_edate is not None and request_edate >= today
+
+        is_weekend = today.weekday() >= 5
         is_weekly_market = str(symbol or "").lower().startswith(("sh", "sz", "hk", "us"))
         skip_forward_non_trading_day = is_weekend and is_weekly_market
+
         if skip_forward_non_trading_day:
-            logger.info(
-                f"[PRICE AUTO FORWARD] skip on weekend for symbol={symbol}, today={today_ts.date()}"
-            )
+            logger.info(f"[PRICE AUTO FORWARD] skip on weekend for symbol={symbol}, today={today}")
 
         if (
             request_edate is not None
+            and cache_latest is not None
             and request_edate > cache_latest
             and not skip_forward_non_trading_day
             and not (cache_fresh and request_is_future)
         ):
-            today_str = today_ts.strftime("%Y-%m-%d")
+            today_str = today.strftime("%Y-%m-%d")
             for _ in range(max_extend_iterations):
-                current_latest = full_df.index.max()
-                extend_sdate = (current_latest + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+                _, cur_latest_str = DateRangeUtils.get_date_range(full_records, date_key)
+                cur_latest = DateRangeUtils.parse_date(cur_latest_str)
+                if cur_latest is None:
+                    break
+                extend_sdate = DateRangeUtils.add_days(cur_latest_str, 1)
                 extend_edate = today_str
-                logger.info(
-                    f"[PRICE AUTO FORWARD] symbol={symbol}, extend_sdate={extend_sdate}, "
-                    f"extend_edate={extend_edate}"
-                )
+                logger.info(f"[PRICE AUTO FORWARD] symbol={symbol}, extend_sdate={extend_sdate}, extend_edate={extend_edate}")
                 fetched = fetch_func(symbol, extend_sdate, extend_edate, freq, days, fq)
-                _, _, fetched_df = fetched
-                if fetched_df is None or fetched_df.empty:
+                _, _, fetched_records = fetched
+                if not fetched_records:
                     logger.info("[PRICE AUTO FORWARD] fetched empty, stop")
                     break
                 self.put(base_key, fetched)
                 refreshed = _get_full_cached()
                 if not refreshed:
                     break
-                _, _, full_df = refreshed
-                if full_df.index.max() <= current_latest:
+                _, _, full_records = refreshed
+                _, new_latest_str = DateRangeUtils.get_date_range(full_records, date_key)
+                new_latest = DateRangeUtils.parse_date(new_latest_str)
+                if new_latest is None or new_latest <= cur_latest:
                     logger.info("[PRICE AUTO FORWARD] latest not advanced, stop")
                     break
-                if full_df.index.max() >= request_edate:
+                if new_latest >= request_edate:
                     logger.info(f"[PRICE AUTO FORWARD] reached request edate={request_edate}")
                     break
 
-        # 2) 后向扩展：仅在请求 edate 不晚于缓存最新时才考虑；
-        # 对“未来/不限”请求（例如 edate=2099）不做后向补历史，避免新股反复无效请求。
-        if request_edate is not None and request_edate <= full_df.index.max():
-            data_before = full_df[full_df.index <= request_edate]
-            need_backward = (request_edate < full_df.index.min()) or (len(data_before) <= min_rows_before_edate)
+        # 2) 后向扩展
+        _, cur_latest_str = DateRangeUtils.get_date_range(full_records, date_key)
+        cur_latest = DateRangeUtils.parse_date(cur_latest_str)
+        if request_edate is not None and cur_latest is not None and request_edate <= cur_latest:
+            data_before = DateRangeUtils.filter_records(full_records, edate=edate, date_key=date_key)
+            cur_earliest_str, _ = DateRangeUtils.get_date_range(full_records, date_key)
+            cur_earliest = DateRangeUtils.parse_date(cur_earliest_str)
+            need_backward = (
+                cur_earliest is None
+                or request_edate < cur_earliest
+                or len(data_before) <= min_rows_before_edate
+            )
             if need_backward:
                 for _ in range(max_extend_iterations):
-                    current_earliest = full_df.index.min()
-                    extend_edate = (current_earliest - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-                    logger.info(
-                        f"[PRICE AUTO BACKWARD] symbol={symbol}, extend_edate={extend_edate}, "
-                        f"current_earliest={current_earliest}"
-                    )
+                    earliest_str, _ = DateRangeUtils.get_date_range(full_records, date_key)
+                    current_earliest = DateRangeUtils.parse_date(earliest_str)
+                    if current_earliest is None:
+                        break
+                    extend_edate = DateRangeUtils.add_days(earliest_str, -1)
+                    logger.info(f"[PRICE AUTO BACKWARD] symbol={symbol}, extend_edate={extend_edate}, current_earliest={current_earliest}")
                     fetched = fetch_func(symbol, "", extend_edate, freq, days, fq)
-                    _, _, fetched_df = fetched
-                    if fetched_df is None or fetched_df.empty:
+                    _, _, fetched_records = fetched
+                    if not fetched_records:
                         logger.info("[PRICE AUTO BACKWARD] fetched empty, stop")
                         break
                     self.put(base_key, fetched)
                     refreshed = _get_full_cached()
                     if not refreshed:
                         break
-                    _, _, full_df = refreshed
-                    if full_df.index.min() >= current_earliest:
+                    _, _, full_records = refreshed
+                    new_earliest_str, _ = DateRangeUtils.get_date_range(full_records, date_key)
+                    new_earliest = DateRangeUtils.parse_date(new_earliest_str)
+                    if new_earliest is None or new_earliest >= current_earliest:
                         logger.info("[PRICE AUTO BACKWARD] earliest not moved, stop")
                         break
-                    data_before = full_df[full_df.index <= request_edate]
-                    if len(data_before) > min_rows_before_edate and full_df.index.min() <= request_edate:
-                        logger.info(
-                            f"[PRICE AUTO BACKWARD] sufficient rows before edate={request_edate}, "
-                            f"rows={len(data_before)}"
-                        )
+                    data_before = DateRangeUtils.filter_records(full_records, edate=edate, date_key=date_key)
+                    if len(data_before) > min_rows_before_edate and new_earliest <= request_edate:
+                        logger.info(f"[PRICE AUTO BACKWARD] sufficient rows before edate={request_edate}, rows={len(data_before)}")
                         break
 
         final_hit = self.get(base_key, sdate=sdate, edate=edate)

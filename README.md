@@ -4,7 +4,7 @@
 
 ## 版本信息
 
-当前版本：**0.7.0**
+当前版本：**0.6.2**
 
 ## 主要特性
 
@@ -14,6 +14,7 @@
 - ✅ 完善的错误处理和异常体系
 - ✅ 可配置的HTTP客户端（超时、重试等）
 - ✅ 模块化设计，易于扩展
+- ✅ **pandas 为可选依赖**：默认返回 `list[dict]`，无需安装 pandas；需要 DataFrame 时传 `as_dataframe=True`
 
 ## 安装
 
@@ -27,6 +28,12 @@ pip install rquote
 uv pip install rquote
 ```
 
+**安装 pandas 支持（可选，用于获取 DataFrame 格式数据）：**
+
+```bash
+pip install "rquote[dataframe]"
+```
+
 ## 快速开始
 
 ### 基本使用
@@ -34,16 +41,20 @@ uv pip install rquote
 ```python
 from rquote import get_price
 
-# 获取上证指数数据
-sid, name, df = get_price('sh000001')
-print(df.head())  # 数据为pandas DataFrame
+# 获取上证指数数据（默认返回 list[dict]，无需 pandas）
+sid, name, records = get_price('sh000001')
+print(records[0])  # {'date': '2024-02-06', 'open': 2680.48, 'close': 2789.49, ...}
+
+# 需要 pandas DataFrame 时，传 as_dataframe=True（需安装 pandas）
+sid, name, df = get_price('sh000001', as_dataframe=True)
+print(df.head())
 ```
 
 ### 获取指定日期范围的数据
 
 ```python
 # 获取指定日期范围的数据
-sid, name, df = get_price('sz000001', sdate='2024-01-01', edate='2024-02-01')
+sid, name, records = get_price('sz000001', sdate='2024-01-01', edate='2024-02-01')
 ```
 
 ### 使用缓存
@@ -130,7 +141,7 @@ cache.close()
 
 ### 历史价格数据获取
 
-#### `get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq', dd=None)`
+#### `get_price(i, sdate='', edate='', freq='day', days=320, fq='qfq', dd=None, as_dataframe=False)`
 
 获取股票、基金、期货的历史价格数据
 
@@ -142,6 +153,7 @@ cache.close()
 - `days`: 获取天数，默认320天
 - `fq`: 复权方式，默认'qfq' (前复权)，可选：'hfq' (后复权)
 - `dd`: 本地缓存字典 (可选，已废弃，建议使用MemoryCache)
+- `as_dataframe`: 为 `True` 时返回 `pd.DataFrame`（需安装 `pandas`），默认 `False` 返回 `list[dict]`
 
 **代码格式说明:**
 - A股: `sh000001`表示上证指数，`sz000001`表示深市000001股票`平安银行`
@@ -155,38 +167,54 @@ cache.close()
 ```python
 from rquote import get_price
 
-# 获取上证指数数据
-sid, nm, df = get_price('sh000001')
-print(df.head())
+# 获取上证指数数据（返回 list[dict]）
+sid, nm, records = get_price('sh000001')
+print(records[0])  # {'date': '2024-02-06', 'open': 2680.48, ...}
 
 # 获取指定日期范围的数据
-sid, nm, df = get_price('sz000001', sdate='2024-01-01', edate='2024-02-01')
+sid, nm, records = get_price('sz000001', sdate='2024-01-01', edate='2024-02-01')
 
 # 获取比特币数据
-sid, nm, df = get_price('fuBTC')
+sid, nm, records = get_price('fuBTC')
 
 # 获取期货分钟数据
-sid, nm, df = get_price('fuM2601', freq='min')
+sid, nm, records = get_price('fuM2601', freq='min')
+
+# 需要 DataFrame 时（需安装 pandas）
+sid, nm, df = get_price('sh000001', as_dataframe=True)
+print(df.head())
 ```
 
-**返回数据格式:**
+**返回数据格式（`as_dataframe=False`，默认）：**
+```python
+[
+  {'date': '2024-02-06', 'open': 2680.48, 'close': 2789.49, 'high': 2802.93, 'low': 2669.67, 'vol': 502849313},
+  {'date': '2024-02-07', 'open': 2791.51, 'close': 2829.70, 'high': 2829.70, 'low': 2770.53, 'vol': 547117439},
+  ...
+]
+```
+
+**返回数据格式（`as_dataframe=True`，需 pandas）：**
 | date       | open    | close   | high    | low     | vol        |
 |------------|---------|---------|---------|---------|------------|
 | 2024-02-06 | 2680.48 | 2789.49 | 2802.93 | 2669.67 | 502849313  |
 | 2024-02-07 | 2791.51 | 2829.70 | 2829.70 | 2770.53 | 547117439  |
 
-#### `get_price_longer(i, l=2, edate='', freq='day', fq='qfq', dd=None)`
+#### `get_price_longer(i, l=2, edate='', freq='day', fq='qfq', dd=None, as_dataframe=False)`
 
 获取更长时间的历史数据，默认获取2年数据，并且参数与 `get_price` 保持一致
 
 ```python
 from rquote import get_price_longer
 
-# 获取3年的历史数据（默认日线、前复权，以最新交易日为结束）
-sid, nm, df = get_price_longer('sh000001', l=3)
+# 获取3年的历史数据（返回 list[dict]）
+sid, nm, records = get_price_longer('sh000001', l=3)
 
-# 指定结束日期与频率（例如获取到 2024-02-01 的周线数据）
-sid, nm, df = get_price_longer('sh000001', l=3, edate='2024-02-01', freq='week', fq='qfq')
+# 指定结束日期与频率
+sid, nm, records = get_price_longer('sh000001', l=3, edate='2024-02-01', freq='week', fq='qfq')
+
+# 需要 DataFrame 时
+sid, nm, df = get_price_longer('sh000001', l=3, as_dataframe=True)
 ```
 
 ### 股票列表获取
@@ -486,50 +514,30 @@ result = WebUtils.test_proxy('127.0.0.1:8080')
 
 #### `BasicFactors`
 
-基础因子计算工具类
+基础因子计算工具类（**v0.6.2 起已清空**，原方法依赖 pandas 专属 API，随 pandas 改为可选依赖一并移除）
 
 ```python
 from rquote import BasicFactors
-import pandas as pd
-
-# 假设df是价格数据DataFrame
-# break_rise: 突破上涨
-break_rise = BasicFactors.break_rise(df)
-
-# min_resist: 最小阻力
-min_resist = BasicFactors.min_resist(df)
-
-# vol_extreme: 成交量极值
-vol_extreme = BasicFactors.vol_extreme(df)
-
-# bias_rate_over_ma60: 偏离MA60的比率
-bias_rate = BasicFactors.bias_rate_over_ma60(df)
-
-# op_ma: MA评分
-ma_score = BasicFactors.op_ma(df)
+b = BasicFactors()  # 可导入，空壳类，无方法
 ```
 
 ## 架构改进
 
 ### 新版本改进
 
-**v0.3.5** 主要改进：
+**v0.6.2** 主要改进：
 
-1. **修复Critical Bugs**
-   - 修复了 `WebUtils.http_get` 中的 `cls.ua` bug
-   - 修复了 `test_proxy` 方法中的逻辑错误
-   - 改进了异常处理
+1. **pandas 改为可选依赖**
+   - 内部数据流统一改为 `list[dict]`（JSON 友好，无需 pandas 即可运行）
+   - `get_price` / `get_price_longer` 新增 `as_dataframe=False` 参数，指定 `True` 时在出口处转为 `pd.DataFrame`
+   - 安装：`pip install rquote` 不再依赖 pandas；需 DataFrame 支持时用 `pip install "rquote[dataframe]"`
 
-2. **新增模块化架构**
-   - 配置管理模块 (`config.py`)
-   - 异常处理体系 (`exceptions.py`)
-   - 缓存抽象层 (`cache/`)
-   - 数据源抽象层 (`data_sources/`)
-   - 改进的HTTP客户端 (`utils/http.py`)
+2. **缓存层全面重写（无破坏性变更）**
+   - 所有后端（SQLite / JSONL / Pickle / PerKeyJson）统一使用原生 JSON 序列化，废弃旧版 base64+pickle 格式
+   - 旧缓存文件（base64+pickle）直接废弃，删除 `~/.rquote/cache*` 后重新拉取即可
 
-3. **向后兼容**
-   - 所有原有API保持不变
-   - 新增功能为可选使用
+3. **`BasicFactors` 清空为空壳类**
+   - 原 `break_rise`、`min_resist`、`vol_extreme` 等方法依赖 pandas `.rolling()` 专属 API，随本次重构一并移除
 
 ### 目录结构
 

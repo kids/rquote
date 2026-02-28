@@ -1,33 +1,22 @@
 # -*- coding: utf-8 -*-
 """
 持久化存储后端抽象与默认实现。
-
-新增数据库兼容只需：
-1. 实现 StorageBackend 协议（get_raw / put / delete / clear / close）
-2. 在 create_persistent_cache 的工厂里注册 backend 名称与构造方式
 """
 from __future__ import annotations
 
-import base64
+import datetime
 import json
 import pickle
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Optional, Tuple, Protocol, Any, Callable
-import pandas as pd
+from typing import Optional, Tuple, Protocol, Any, Callable, List, Dict
 
-
-# ---------- 协议：未来兼容其他库只要实现这 5 个接口 ----------
 
 class StorageBackend(Protocol):
-    """持久化存储后端协议。兼容新数据库只需实现本协议并注册到工厂。"""
+    """持久化存储后端协议。"""
 
-    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
-        """
-        按 base_key 取出一条原始记录（不做过期、不做日期过滤）。
-        返回 (symbol, name, df, expire_at)，不存在则 None。
-        """
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, List[Dict], Optional[datetime.datetime]]]:
         ...
 
     def put(
@@ -35,30 +24,24 @@ class StorageBackend(Protocol):
         base_key: str,
         symbol: str,
         name: str,
-        df: pd.DataFrame,
+        records: List[Dict],
         earliest_date: Optional[str],
         latest_date: Optional[str],
         freq: str,
         fq: str,
-        expire_at: Optional[pd.Timestamp],
+        expire_at: Optional[datetime.datetime],
     ) -> None:
-        """写入或覆盖一条缓存记录。"""
         ...
 
     def delete(self, base_key: str) -> None:
-        """按 base_key 删除一条记录。"""
         ...
 
     def clear(self) -> None:
-        """清空所有记录。"""
         ...
 
     def close(self) -> None:
-        """释放连接/句柄。"""
         ...
 
-
-# ---------- 默认实现：SQLite ----------
 
 class SQLiteBackend:
     """使用 SQLite 的存储后端（标准库 sqlite3，无额外依赖）。"""
@@ -74,7 +57,7 @@ class SQLiteBackend:
                 cache_key TEXT PRIMARY KEY,
                 symbol TEXT NOT NULL,
                 name TEXT,
-                data BLOB,
+                data TEXT,
                 earliest_date TEXT,
                 latest_date TEXT,
                 freq TEXT,
@@ -88,38 +71,41 @@ class SQLiteBackend:
         """)
         self.conn.commit()
 
-    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, List[Dict], Optional[datetime.datetime]]]:
         row = self.conn.execute(
             "SELECT symbol, name, data, expire_at FROM cache_data WHERE cache_key = ?",
             (base_key,),
         ).fetchone()
         if not row:
             return None
-        symbol, name, data_blob, expire_at_str = row
-        df = pickle.loads(data_blob)
-        expire_at = pd.to_datetime(expire_at_str) if expire_at_str else None
-        return (symbol, name, df, expire_at)
+        symbol, name, data_text, expire_at_str = row
+        try:
+            records = json.loads(data_text) if data_text else []
+        except (json.JSONDecodeError, TypeError):
+            records = []
+        expire_at = datetime.datetime.fromisoformat(expire_at_str) if expire_at_str else None
+        return (symbol, name, records, expire_at)
 
     def put(
         self,
         base_key: str,
         symbol: str,
         name: str,
-        df: pd.DataFrame,
+        records: List[Dict],
         earliest_date: Optional[str],
         latest_date: Optional[str],
         freq: str,
         fq: str,
-        expire_at: Optional[pd.Timestamp],
+        expire_at: Optional[datetime.datetime],
     ) -> None:
-        data_blob = pickle.dumps(df)
-        updated_at = pd.Timestamp.now().isoformat()
+        data_text = json.dumps(records, ensure_ascii=False)
+        updated_at = datetime.datetime.now().isoformat()
         expire_at_str = expire_at.isoformat() if expire_at else None
         self.conn.execute("""
             INSERT OR REPLACE INTO cache_data
             (cache_key, symbol, name, data, earliest_date, latest_date, freq, fq, updated_at, expire_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (base_key, symbol, name, data_blob, earliest_date, latest_date, freq, fq, updated_at, expire_at_str))
+        """, (base_key, symbol, name, data_text, earliest_date, latest_date, freq, fq, updated_at, expire_at_str))
         self.conn.commit()
 
     def delete(self, base_key: str) -> None:
@@ -134,14 +120,11 @@ class SQLiteBackend:
         self.conn.close()
 
 
-# ---------- 默认实现：JSONL（单文件，每行一条 JSON） ----------
-
 class JsonlBackend:
-    """使用单文件 JSONL 的存储后端（每行一个 JSON 对象，data 为 base64 的 pickle）。
+    """使用单文件 JSONL 的存储后端。records 字段直接存 list[dict]（原生 JSON）。
 
-    写入策略：put() 追加写入（O(1)），不重写整个文件，支持多线程并发。
-    _load() 按行读取时后者覆盖前者，自动去重（last-write-wins）。
-    compact() / close() 时执行整体重写，消除追加产生的冗余行。
+    写入策略：put() 追加写入（O(1)），_load() 后者覆盖前者（last-write-wins）。
+    compact()/close() 时整体重写，消除追加产生的冗余行。
     """
 
     def __init__(self, path: str):
@@ -171,7 +154,6 @@ class JsonlBackend:
                     continue
 
     def _save(self) -> None:
-        """整体重写文件（compact）。调用方须持有 _lock。"""
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "w", encoding="utf-8") as f:
             for base_key, obj in self._data.items():
@@ -181,7 +163,6 @@ class JsonlBackend:
         self._append_count = 0
 
     def _append_entry(self, base_key: str) -> None:
-        """追加写入单条记录（O(1)）。调用方须持有 _lock。"""
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         obj = dict(self._data[base_key])
         obj["cache_key"] = base_key
@@ -190,60 +171,55 @@ class JsonlBackend:
         self._append_count += 1
 
     def set_batch_mode(self, on: bool) -> None:
-        """批量模式：为 True 时 put 只更新内存不追加写文件，结束时需调用 flush_batch()。"""
         self._batch_mode = on
 
     def flush_batch(self) -> None:
-        """结束批量模式并一次性写盘（整文件重写）。"""
         with self._lock:
             if self._batch_mode or self._append_count > 0:
                 self._save()
             self._batch_mode = False
 
     def compact(self) -> None:
-        """主动整理文件，消除追加产生的冗余行。"""
         with self._lock:
             if self._append_count > 0:
                 self._save()
 
-    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, List[Dict], Optional[datetime.datetime]]]:
         with self._lock:
             if base_key not in self._data:
                 return None
             obj = self._data[base_key]
-            data_b64 = obj.get("data")
-            if not data_b64:
-                return None
-            df = pickle.loads(base64.b64decode(data_b64))
+            records = obj.get("records", [])
+            if not isinstance(records, list):
+                records = []
             symbol = obj.get("symbol", "")
             name = obj.get("name", "")
             expire_at_str = obj.get("expire_at")
-            expire_at = pd.to_datetime(expire_at_str) if expire_at_str else None
-            return (symbol, name, df, expire_at)
+            expire_at = datetime.datetime.fromisoformat(expire_at_str) if expire_at_str else None
+            return (symbol, name, records, expire_at)
 
     def put(
         self,
         base_key: str,
         symbol: str,
         name: str,
-        df: pd.DataFrame,
+        records: List[Dict],
         earliest_date: Optional[str],
         latest_date: Optional[str],
         freq: str,
         fq: str,
-        expire_at: Optional[pd.Timestamp],
+        expire_at: Optional[datetime.datetime],
     ) -> None:
-        data_b64 = base64.b64encode(pickle.dumps(df)).decode("ascii")
         entry = {
             "cache_key": base_key,
             "symbol": symbol,
             "name": name,
-            "data": data_b64,
+            "records": records,
             "earliest_date": earliest_date,
             "latest_date": latest_date,
             "freq": freq,
             "fq": fq,
-            "updated_at": pd.Timestamp.now().isoformat(),
+            "updated_at": datetime.datetime.now().isoformat(),
             "expire_at": expire_at.isoformat() if expire_at else None,
         }
         with self._lock:
@@ -268,12 +244,9 @@ class JsonlBackend:
                 self._save()
 
 
-# ---------- JSONL 懒加载：按 key 用 offset 读行，不整文件进内存 ----------
-
 class JsonlBackendLazy:
     """
-    只读 JSONL 后端：启动时只建 key -> (offset, length, earliest_date, latest_date) 索引，
-    get_raw(key) 时再按 offset 读那一行并解析。适用于大文件、只读场景，常驻内存约 O(条数) 而非 O(文件大小)。
+    只读 JSONL 后端：按 offset 索引，get_raw 时再读那一行。
     put/delete/clear 为 no-op（只读）。
     """
 
@@ -283,7 +256,6 @@ class JsonlBackendLazy:
         self._build_index()
 
     def _build_index(self) -> None:
-        """扫描文件建立 key -> (offset, length, earliest_date, latest_date)。"""
         if not self.path.exists():
             return
         self._index = {}
@@ -308,7 +280,7 @@ class JsonlBackendLazy:
                     obj.get("latest_date"),
                 )
 
-    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, List[Dict], Optional[datetime.datetime]]]:
         if base_key not in self._index:
             return None
         offset, length, _, _ = self._index[base_key]
@@ -319,32 +291,16 @@ class JsonlBackendLazy:
             obj = json.loads(raw.decode("utf-8"))
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             return None
-        data_b64 = obj.get("data")
-        if not data_b64:
-            return None
-        try:
-            df = pickle.loads(base64.b64decode(data_b64))
-        except Exception:
-            return None
+        records = obj.get("records", [])
+        if not isinstance(records, list):
+            records = []
         symbol = obj.get("symbol", "")
         name = obj.get("name", "")
         expire_at_str = obj.get("expire_at")
-        expire_at = pd.to_datetime(expire_at_str) if expire_at_str else None
-        return (symbol, name, df, expire_at)
+        expire_at = datetime.datetime.fromisoformat(expire_at_str) if expire_at_str else None
+        return (symbol, name, records, expire_at)
 
-    def put(
-        self,
-        base_key: str,
-        symbol: str,
-        name: str,
-        df: pd.DataFrame,
-        earliest_date: Optional[str],
-        latest_date: Optional[str],
-        freq: str,
-        fq: str,
-        expire_at: Optional[pd.Timestamp],
-    ) -> None:
-        # 只读后端，忽略写入
+    def put(self, base_key, symbol, name, records, earliest_date, latest_date, freq, fq, expire_at):
         pass
 
     def delete(self, base_key: str) -> None:
@@ -360,17 +316,8 @@ class JsonlBackendLazy:
         pass
 
 
-# ---------- 默认实现：按市场分片 JSONL ----------
-
 class MarketJsonlBackend:
-    """
-    按市场分片的 JSONL 存储后端。
-    - cn -> A股/基金等默认市场
-    - hk -> 港股
-    - us -> 美股
-    - fu -> 期货
-    - backend_class: 每个市场使用的后端类，默认 JsonlBackend；传 JsonlBackendLazy 则按 key 按行读、不整文件进内存。
-    """
+    """按市场分片的 JSONL 存储后端。"""
 
     def __init__(
         self,
@@ -407,55 +354,38 @@ class MarketJsonlBackend:
         parts = base_key.split(":")
         return parts[0] if parts else ""
 
-    def _backend_for_symbol(self, symbol: str) -> JsonlBackend:
+    def _backend_for_symbol(self, symbol: str):
         market = self._route_fn(symbol)
         if market in self._backends:
             return self._backends[market]
         return self._backends[self._fallback_market]
 
-    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, List[Dict], Optional[datetime.datetime]]]:
         symbol = self._symbol_from_key(base_key)
-        backend = self._backend_for_symbol(symbol)
-        return backend.get_raw(base_key)
+        return self._backend_for_symbol(symbol).get_raw(base_key)
 
-    def put(
-        self,
-        base_key: str,
-        symbol: str,
-        name: str,
-        df: pd.DataFrame,
-        earliest_date: Optional[str],
-        latest_date: Optional[str],
-        freq: str,
-        fq: str,
-        expire_at: Optional[pd.Timestamp],
-    ) -> None:
-        backend = self._backend_for_symbol(symbol)
-        backend.put(base_key, symbol, name, df, earliest_date, latest_date, freq, fq, expire_at)
+    def put(self, base_key, symbol, name, records, earliest_date, latest_date, freq, fq, expire_at) -> None:
+        self._backend_for_symbol(symbol).put(base_key, symbol, name, records, earliest_date, latest_date, freq, fq, expire_at)
 
     def delete(self, base_key: str) -> None:
         symbol = self._symbol_from_key(base_key)
-        backend = self._backend_for_symbol(symbol)
-        backend.delete(base_key)
+        self._backend_for_symbol(symbol).delete(base_key)
 
     def clear(self) -> None:
         for backend in self._backends.values():
             backend.clear()
 
     def set_batch_mode(self, on: bool) -> None:
-        """批量模式：为 True 时 put 只更新内存不追加写文件，结束时需调用 flush_batch()。"""
         for backend in self._backends.values():
             if hasattr(backend, "set_batch_mode"):
                 backend.set_batch_mode(on)
 
     def flush_batch(self) -> None:
-        """结束批量模式并一次性写盘。"""
         for backend in self._backends.values():
             if hasattr(backend, "flush_batch"):
                 backend.flush_batch()
 
     def compact(self) -> None:
-        """整理所有市场的 JSONL 文件，消除追加产生的冗余行。"""
         for backend in self._backends.values():
             backend.compact()
 
@@ -473,15 +403,13 @@ class MarketJsonlBackend:
                     symbol = base_key.split(":")[0] if ":" in base_key else base_key
                     if target_set is not None and symbol not in target_set:
                         continue
-                    rows.append(
-                        {
-                            "market": market,
-                            "symbol": symbol,
-                            "earliest_date": earliest,
-                            "latest_date": latest,
-                            "rows": -1,
-                        }
-                    )
+                    rows.append({
+                        "market": market,
+                        "symbol": symbol,
+                        "earliest_date": earliest,
+                        "latest_date": latest,
+                        "rows": -1,
+                    })
                 continue
             with backend._lock:
                 data_snapshot = dict(backend._data)
@@ -491,30 +419,21 @@ class MarketJsonlBackend:
                     continue
                 if target_set is not None and symbol not in target_set:
                     continue
-                payload = obj.get("data")
-                nrows = -1
-                if payload:
-                    try:
-                        df = pickle.loads(base64.b64decode(payload))
-                        nrows = len(df)
-                    except Exception:
-                        nrows = -1
-                rows.append(
-                    {
-                        "market": market,
-                        "symbol": symbol,
-                        "earliest_date": obj.get("earliest_date"),
-                        "latest_date": obj.get("latest_date"),
-                        "rows": nrows,
-                    }
-                )
+                records = obj.get("records", [])
+                nrows = len(records) if isinstance(records, list) else -1
+                rows.append({
+                    "market": market,
+                    "symbol": symbol,
+                    "earliest_date": obj.get("earliest_date"),
+                    "latest_date": obj.get("latest_date"),
+                    "rows": nrows,
+                })
         rows.sort(key=lambda x: x["symbol"])
         return rows
 
-# ---------- 可选实现：Pickle（兼容旧 use_duckdb=False） ----------
 
 class PickleBackend:
-    """单文件 pickle 字典存储，兼容旧版 PersistentCache(use_duckdb=False)。"""
+    """单文件 pickle 字典存储。"""
 
     def __init__(self, path: str):
         self.path = path
@@ -532,39 +451,45 @@ class PickleBackend:
         with open(self.path, "wb") as f:
             pickle.dump(self._data, f)
 
-    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, List[Dict], Optional[datetime.datetime]]]:
         if base_key not in self._data:
             return None
         entry = self._data[base_key]
         symbol = entry.get("symbol", base_key.split(":")[0] if ":" in base_key else "")
         name = entry.get("name", "")
-        df = entry.get("data")
-        if df is None or not isinstance(df, pd.DataFrame):
-            return None
+        records = entry.get("data", [])
+        if not isinstance(records, list):
+            records = []
         expire_at = entry.get("expire_at")
-        return (symbol, name, df, expire_at)
+        # migrate old datetime -> datetime.datetime
+        if expire_at is not None and not isinstance(expire_at, datetime.datetime):
+            try:
+                expire_at = datetime.datetime.fromisoformat(str(expire_at))
+            except Exception:
+                expire_at = None
+        return (symbol, name, records, expire_at)
 
     def put(
         self,
         base_key: str,
         symbol: str,
         name: str,
-        df: pd.DataFrame,
+        records: List[Dict],
         earliest_date: Optional[str],
         latest_date: Optional[str],
         freq: str,
         fq: str,
-        expire_at: Optional[pd.Timestamp],
+        expire_at: Optional[datetime.datetime],
     ) -> None:
         self._data[base_key] = {
             "symbol": symbol,
             "name": name,
-            "data": df,
+            "data": records,
             "earliest_date": earliest_date,
             "latest_date": latest_date,
             "freq": freq,
             "fq": fq,
-            "updated_at": pd.Timestamp.now(),
+            "updated_at": datetime.datetime.now(),
             "expire_at": expire_at,
         }
         self._save()
@@ -582,19 +507,12 @@ class PickleBackend:
         pass
 
 
-# ---------- 每 key 一 JSON 文件（不区分市场） ----------
-
 def _base_key_to_filename(base_key: str) -> str:
-    """base_key 如 sz000001:day:qfq -> sz000001_day_qfq.json"""
     return base_key.replace(":", "_") + ".json"
 
 
 class PerKeyJsonBackend:
-    """
-    每 key 一个 JSON 文件，不区分市场。
-    初始化参数 path 为所有 JSON 文件所在的目录地址。
-    文件名规则：base_key 中 : 替换为 _，如 sz000001:day:qfq -> sz000001_day_qfq.json
-    """
+    """每 key 一个 JSON 文件，不区分市场。"""
 
     def __init__(self, path: str):
         self.root = Path(path)
@@ -602,7 +520,7 @@ class PerKeyJsonBackend:
     def _path_for(self, base_key: str) -> Path:
         return self.root / _base_key_to_filename(base_key)
 
-    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, pd.DataFrame, Optional[pd.Timestamp]]]:
+    def get_raw(self, base_key: str) -> Optional[Tuple[str, str, List[Dict], Optional[datetime.datetime]]]:
         p = self._path_for(base_key)
         if not p.exists():
             return None
@@ -611,42 +529,37 @@ class PerKeyJsonBackend:
                 obj = json.load(f)
         except (OSError, json.JSONDecodeError):
             return None
-        data_b64 = obj.get("data")
-        if not data_b64:
-            return None
-        try:
-            df = pickle.loads(base64.b64decode(data_b64))
-        except Exception:
-            return None
+        records = obj.get("records", [])
+        if not isinstance(records, list):
+            records = []
         symbol = obj.get("symbol", "")
         name = obj.get("name", "")
         expire_at_str = obj.get("expire_at")
-        expire_at = pd.to_datetime(expire_at_str) if expire_at_str else None
-        return (symbol, name, df, expire_at)
+        expire_at = datetime.datetime.fromisoformat(expire_at_str) if expire_at_str else None
+        return (symbol, name, records, expire_at)
 
     def put(
         self,
         base_key: str,
         symbol: str,
         name: str,
-        df: pd.DataFrame,
+        records: List[Dict],
         earliest_date: Optional[str],
         latest_date: Optional[str],
         freq: str,
         fq: str,
-        expire_at: Optional[pd.Timestamp],
+        expire_at: Optional[datetime.datetime],
     ) -> None:
-        data_b64 = base64.b64encode(pickle.dumps(df)).decode("ascii")
         obj = {
             "cache_key": base_key,
             "symbol": symbol,
             "name": name,
-            "data": data_b64,
+            "records": records,
             "earliest_date": earliest_date,
             "latest_date": latest_date,
             "freq": freq,
             "fq": fq,
-            "updated_at": pd.Timestamp.now().isoformat(),
+            "updated_at": datetime.datetime.now().isoformat(),
             "expire_at": expire_at.isoformat() if expire_at else None,
         }
         self.root.mkdir(parents=True, exist_ok=True)
@@ -684,22 +597,14 @@ class PerKeyJsonBackend:
                 symbol = obj.get("cache_key", "").split(":")[0]
             if target_set is not None and symbol not in target_set:
                 continue
-            payload = obj.get("data")
-            nrows = -1
-            if payload:
-                try:
-                    df = pickle.loads(base64.b64decode(payload))
-                    nrows = len(df)
-                except Exception:
-                    pass
-            rows.append(
-                {
-                    "market": "",
-                    "symbol": symbol,
-                    "earliest_date": obj.get("earliest_date"),
-                    "latest_date": obj.get("latest_date"),
-                    "rows": nrows,
-                }
-            )
+            records = obj.get("records", [])
+            nrows = len(records) if isinstance(records, list) else -1
+            rows.append({
+                "market": "",
+                "symbol": symbol,
+                "earliest_date": obj.get("earliest_date"),
+                "latest_date": obj.get("latest_date"),
+                "rows": nrows,
+            })
         rows.sort(key=lambda x: x["symbol"])
         return rows
