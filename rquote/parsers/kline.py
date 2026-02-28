@@ -84,8 +84,13 @@ class KlineParser:
 
             if freq in ('min', '1min', 'minute'):
                 records = []
+                # 新浪新格式: d -> dtime, c -> close 等
+                _SINA_MIN_MAP = {'d': 'dtime', 'c': 'close', 'v': 'vol'}
                 for item in raw_data:
                     rec = dict(item)
+                    for old_k, new_k in _SINA_MIN_MAP.items():
+                        if old_k in rec and new_k not in rec:
+                            rec[new_k] = rec.pop(old_k, '' if new_k == 'dtime' else 0)
                     for col in numeric_cols_min:
                         if col in rec:
                             rec[col] = to_float(rec[col])
@@ -96,11 +101,16 @@ class KlineParser:
             else:
                 records = []
                 cols = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
+                # 新浪新格式 dict: d,o,h,l,c,v,p,s -> date,open,high,low,close,vol,p,s
+                _SINA_DAY_MAP = {'d': 'date', 'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close', 'v': 'vol'}
                 for item in raw_data:
                     if isinstance(item, (list, tuple)):
                         rec = dict(zip(cols, item))
                     else:
                         rec = dict(item)
+                        for old_k, new_k in _SINA_DAY_MAP.items():
+                            if old_k in rec and new_k not in rec:
+                                rec[new_k] = rec.pop(old_k, '' if new_k == 'date' else 0)
                     for col in numeric_cols_day:
                         if col in rec:
                             rec[col] = to_float(rec[col])

@@ -138,16 +138,7 @@ class FutureMarket(Market):
             raw = load_js_var_json(url)
             records = []
             if raw:
-                cols = ['date', 'open', 'high', 'low', 'close', 'vol', 'p', 's']
-                for item in raw:
-                    if isinstance(item, (list, tuple)):
-                        rec = dict(zip(cols, item))
-                    else:
-                        rec = dict(item)
-                    for col in ['open', 'high', 'low', 'close', 'vol', 'p', 's']:
-                        if col in rec:
-                            rec[col] = to_float(rec[col])
-                    records.append(rec)
+                records = KlineParser.parse_sina_future_kline({'data': raw}, freq='day')
             result = (symbol, future_code, records)
 
         self._put_cache(f"{symbol}:{freq}", result)
