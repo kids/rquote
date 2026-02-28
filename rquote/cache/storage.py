@@ -529,7 +529,7 @@ class PerKeyJsonBackend:
                 obj = json.load(f)
         except (OSError, json.JSONDecodeError):
             return None
-        records = obj.get("records", [])
+        records = obj.get("records") or obj.get("data", [])
         if not isinstance(records, list):
             records = []
         symbol = obj.get("symbol", "")
@@ -597,7 +597,7 @@ class PerKeyJsonBackend:
                 symbol = obj.get("cache_key", "").split(":")[0]
             if target_set is not None and symbol not in target_set:
                 continue
-            records = obj.get("records", [])
+            records = obj.get("records") or obj.get("data", [])
             nrows = len(records) if isinstance(records, list) else -1
             rows.append({
                 "market": "",
