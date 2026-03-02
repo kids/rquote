@@ -30,7 +30,8 @@ class USStockMarket(Market):
                           freq: str = 'day', days: int = 320, fq: str = 'qfq') -> Tuple[str, str, List[Dict]]:
         parser = KlineParser()
 
-        if symbol.endswith(('.OQ', '.N', '.AM')):
+        # 含 "." 的 symbol（如 us.IXIC、usSOXL.AM）视为完整格式，不再添加 .OQ/.N 后缀
+        if '.' in symbol:
             try:
                 raw_data = self.data_source.fetch_kline(
                     symbol, freq=freq, sdate=sdate, edate=edate, days=days, fq=fq
